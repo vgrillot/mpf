@@ -1,7 +1,7 @@
 """raspPinball hardware plateform"""
 
 import logging
-import keypad
+from mpf.platforms.rasppinball.keypad import keypad
 
 
 from mpf.devices.driver import ConfiguredHwDriver
@@ -9,7 +9,7 @@ from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform,
 
 
 #class HardwarePlatform(MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform):
-class HardwarePlatform(SwitchPlatform):
+class HardwarePlatform(SwitchPlatform, DriverPlatform):
 
     """Platform class for the OPP hardware.
 
@@ -27,31 +27,68 @@ class HardwarePlatform(SwitchPlatform):
         self._poll_task = None
         self.features['tickless'] = True
 
-        self.config = self.machine.config['rasppinball']
-        self.machine.config_validator.validate_config("rasppinball", self.config)
+        #self.config = self.machine.config['rasppinball']
+        #self.machine.config_validator.validate_config("rasppinball", self.config)
 
-        self._kp = keypad.keypad()
+        self._kp = keypad()
 
 
     def __repr__(self):
         """Return string representation."""
         return '<Platform.raspPinball>'
 
-#    def initialize(self):
-#        """Initialise connections to OPP hardware."""
-#        self._poll_task = self.machine.clock.loop.create_task(self._poll_sender())
-#        self._poll_task.add_done_callback(self._done)
+    def initialize(self):
+        """Initialise connections to raspPinball hardware."""
+        pass
+
+    def stop():
+        pass
 
     def get_hw_switch_states(self):
         """Get initial hardware switch states."""
         hw_states = dict()
-        k = self.kp.keypad()
+        k = self._kp.keypad()
+        print (k)
         for c in 'ABCDEFGHIJKLMNOP':
             if c in k:
                 hw_states[c] = 1
+                print (k)
             else:
                 hw_states[c] = 0
         return hw_states
+
+    def configure_switch(self, config: dict):
+        """Configure a switch.
+
+        Args:
+            config: Config dict.
+        """
+        print("configure_switch")
+        number = self._get_dict_index(config['number'])
+        return number
+
+
+    def configure_driver(self, config):
+        print("configure_driver")
+        number = self._get_dict_index(config['number'])
+        return number
+        
+
+
+    def clear_hw_rule(self, switch, coil):
+        """Clear a hardware rule.
+
+        This is used if you want to remove the linkage between a switch and
+        some driver activity. For example, if you wanted to disable your
+        flippers (so that a player pushing the flipper buttons wouldn't cause
+        the flippers to flip), you'd call this method with your flipper button
+        as the *sw_num*.
+
+        """
+        self.log.debug("Clearing HW Rule for switch: %s, coils: %s", switch.hw_switch.number,
+                       coil.hw_driver.number)
+
+
 
 
 #    @staticmethod

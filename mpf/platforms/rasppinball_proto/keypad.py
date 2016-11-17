@@ -94,10 +94,10 @@ if __name__ == '__main__':
     kp = keypad()
     
     while True:
-	    # Loop while waiting for a keypress
-	    digit = None
-	    while digit == None:
-		digit = kp.getKey()
-	    
-	    # Print the result
-	    print digit 
+        # Loop while waiting for a keypress
+        digit = None
+        while digit == None:
+            digit = kp.getKey()
+        
+        # Print the result
+        print(digit) 
