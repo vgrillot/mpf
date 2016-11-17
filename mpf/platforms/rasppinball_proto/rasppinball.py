@@ -1,7 +1,7 @@
 """raspPinball hardware plateform"""
 
 import logging
-import keypad
+#import keypad
 
 
 from mpf.devices.driver import ConfiguredHwDriver
@@ -30,7 +30,7 @@ class HardwarePlatform(SwitchPlatform):
         self.config = self.machine.config['rasppinball']
         self.machine.config_validator.validate_config("rasppinball", self.config)
 
-        self._kp = keypad.keypad()
+        #self._kp = keypad.keypad()
 
 
     def __repr__(self):
@@ -45,7 +45,8 @@ class HardwarePlatform(SwitchPlatform):
     def get_hw_switch_states(self):
         """Get initial hardware switch states."""
         hw_states = dict()
-        k = self.kp.keypad()
+        #k = self._kp.keypad()
+        k = None
         for c in 'ABCDEFGHIJKLMNOP':
             if c in k:
                 hw_states[c] = 1
