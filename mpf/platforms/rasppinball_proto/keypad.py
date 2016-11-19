@@ -18,7 +18,7 @@
 
 import RPi.GPIO as GPIO
 
-class keypad():
+class Keypad():
     # CONSTANTS   
     KEYPAD = [
     ['A', 'B', 'C', 'D'],

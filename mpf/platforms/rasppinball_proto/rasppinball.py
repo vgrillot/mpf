@@ -1,7 +1,7 @@
 """raspPinball hardware plateform"""
 
 import logging
-#import keypad
+from mpf.platforms.rasppinball.keypad import Keypad
 
 import asyncio
 
@@ -43,7 +43,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
         #self.config = self.machine.config['rasppinball']
         #self.machine.config_validator.validate_config("rasppinball", self.config)
 
-        #self._kp = keypad.keypad()
+        self._kp = Keypad()
         self.old_key = ""
         self.key = ""
 
@@ -54,7 +54,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
 
     def initialize(self):
         """Initialise connections to raspPinball hardware."""
-        self._poll_task = self.machine.clock.loop.create_task(self._poll_sender())
+        self.log.info("Initialize raspPinball hardware.")
+        #self._poll_task = self.machine.clock.loop.create_task(self._poll_sender())
         #self._poll_task.add_done_callback(self._done)
 
     def fake_keypad(self):
@@ -79,11 +80,14 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
         return c
 
     def update_kb(self):
-        #k = self._kp.keypad()
+        s = self._kp.getKeys()
         #self.key = ""
-        s = self.fake_keypad()
+        #s = self.fake_keypad()
+        #if len(s) > 0:
+        #    self.log.info(s)
+        #    print("KB:", s)
         if s != self.old_key:
-            print("Keys:%s" % s)
+            #print("Keys:%s" % s)
 
             #   disable sw
             for num, sw in self.switches.items():
@@ -99,12 +103,16 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
             self.old_key = s
 
 
+    def tick(self, dt):
+        """check with tick..."""
+        del dt
+        self.update_kb()
 
     @asyncio.coroutine
     def _poll_sender(self):
         """Poll switches."""
         while True:
-            yield self.update_kb()
+            yield from self.update_kb()
             yield from asyncio.sleep(.01, loop=self.machine.clock.loop)
 
 
@@ -118,7 +126,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
 
 
     def stop(self):
-        pass
+        if self._poll_task:
+            self._poll_task.cancel()
 
     def get_hw_switch_states(self):
         """Get initial hardware switch states."""
@@ -138,7 +147,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
         Args:
             config: Config dict.
         """
-        print("configure_switch")
         #print(config)
         number = config['number']
         print("configure_switch(%s)" % (number))
@@ -154,7 +162,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
         Args:
             config: Config dict.
         """
-        print("configure_driver")
         #print(config)
         number = config['number']
         print("configure_driver(%s)" % (number))
