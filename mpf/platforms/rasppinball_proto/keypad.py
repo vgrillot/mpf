@@ -33,6 +33,7 @@ class keypad():
     def __init__(self):
         GPIO.setmode(GPIO.BCM)
     
+
     def getKey(self):
         
         # Set all columns as output low
@@ -81,7 +82,36 @@ class keypad():
         # Return the value of the key pressed
         self.exit()
         return self.KEYPAD[rowVal][colVal]
-        
+
+
+
+    def getKeys(self):
+        result = []
+
+        # Set all columns as output low
+        for j in range(len(self.COLUMN)):
+            GPIO.setup(self.COLUMN[j], GPIO.OUT)
+            GPIO.output(self.COLUMN[j], GPIO.HIGH)
+
+        # Set all rows as input
+        for i in range(len(self.ROW)):
+            GPIO.setup(self.ROW[i], GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+        #  run all the output and input now...
+        for j in range(len(self.COLUMN)):
+            GPIO.output(self.COLUMN[j], GPIO.LOW)
+            for i in range(len(self.ROW)):
+                tmpRead = GPIO.input(self.ROW[i])
+                if tmpRead == 0:
+                    result.append(self.KEYPAD[rowVal][colVal])
+            GPIO.output(self.COLUMN[j], GPIO.HIGH)
+
+        # Scan rows for pushed key/button
+        # Return the value of the key pressed
+        self.exit()
+        return result
+
+
     def exit(self):
         # Reinitialize all rows and columns as input at exit
         for i in range(len(self.ROW)):
@@ -94,10 +124,10 @@ if __name__ == '__main__':
     kp = keypad()
     
     while True:
-	    # Loop while waiting for a keypress
-	    digit = None
-	    while digit == None:
-		digit = kp.getKey()
-	    
-	    # Print the result
-	    print digit 
+        # Loop while waiting for a keypress
+        digit = None
+        while digit == None:
+            digit = kp.getKey()
+        
+        # Print the result
+        print(digit) 
