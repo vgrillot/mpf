@@ -103,7 +103,7 @@ class keypad():
             for i in range(len(self.ROW)):
                 tmpRead = GPIO.input(self.ROW[i])
                 if tmpRead == 0:
-                    result.append(self.KEYPAD[rowVal][colVal])
+                    result.append(self.KEYPAD[i][j])
             GPIO.output(self.COLUMN[j], GPIO.HIGH)
 
         # Scan rows for pushed key/button
