@@ -280,7 +280,7 @@ class RASPDriver(DriverPlatformInterface):
             many drivers aren't activated at once.
 
         """
-        pass
+        return milliseconds
 
 class RASPSwitch(SwitchPlatformInterface):
 
