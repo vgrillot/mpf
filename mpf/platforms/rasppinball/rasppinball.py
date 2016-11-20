@@ -9,10 +9,11 @@ from mpf.devices.driver import ConfiguredHwDriver
 from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform
 from mpf.platforms.interfaces.switch_platform_interface import SwitchPlatformInterface
 from mpf.platforms.interfaces.driver_platform_interface import DriverPlatformInterface
+from mpf.platforms.interfaces.rgb_led_platform_interface import RGBLEDPlatformInterface
 
 
 #class HardwarePlatform(MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform):
-class HardwarePlatform(SwitchPlatform, DriverPlatform):
+class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
     """Platform class for the OPP hardware.
 
@@ -38,6 +39,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
 
         self.switches = dict()
         self.drivers = dict()
+        self.leds = dict()
+
 
         #self.config = self.machine.config['rasppinball']
         #self.machine.config_validator.validate_config("rasppinball", self.config)
@@ -167,7 +170,24 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
         driver = RASPDriver(config, number)
         self.drivers[number] = driver
         return driver
-        
+
+
+    def configure_led(self, config, channels):
+        """Subclass this method in a platform module to configure an LED.
+
+        This method should return a reference to the LED's platform interface
+        object which will be called to access the hardware.
+
+        Args:
+            channels (int): Number of channels (typically 3 for RGB).
+            config (dict): Config of LED.
+
+        """
+        number = config['number']
+        print("configure_led(%s)" % number)
+        led = RASPLed(config, number)
+        self.leds[number] = led
+        return led
 
 
     def clear_hw_rule(self, switch, coil):
@@ -217,24 +237,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
         pass
 
 
-
-#    @staticmethod
-#    def _done(future):
-#        """Evaluate result of task.
-#
-#        Will raise exceptions from within task.
-#        """
-#        future.result()
-
-#    @asyncio.coroutine
-#    def _poll_sender(self):
-#        """Poll switches."""
-#        while True:
-#            for chain_serial in self.read_input_msg:
-#                self.send_to_processor(chain_serial, self.read_input_msg[chain_serial])
-#                yield from self.opp_connection[chain_serial].writer.drain()
-#                # the line above saturates the link and seems to overhelm the hardware. limit it to 100Hz
-#                yield from asyncio.sleep(.01, loop=self.machine.clock.loop)
 
 class RASPDriver(DriverPlatformInterface):
 
@@ -295,4 +297,28 @@ class RASPSwitch(SwitchPlatformInterface):
 
 
 
+class RASPLed(RGBLEDPlatformInterface):
 
+
+    def __init__(self, config, number):
+        """Initialise led."""
+        self.number = number
+        self.current_color = '000000'
+        self.log = logging.getLogger('RASPLed')
+
+    def color(self, color):
+        """Set the LED to the specified color.
+
+        Args:
+            color: a list of int colors. one for each channel.
+
+        Returns:
+            None
+        """
+        #self._color = color
+        new_color = "{0}{1}{2}".format(hex(int(color[0]))[2:].zfill(2),
+                                       hex(int(color[1]))[2:].zfill(2),
+                                       hex(int(color[2]))[2:].zfill(2))
+        self.log.info("color(%s -> %s)" % (self.number, new_color))
+        #print("color(%s -> %s)" % (self.number, new_color))
+        self.current_color = new_color
