@@ -21,7 +21,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform):
 
     """
 
-    #key = None
     okey = None
     osw = None
     fake_keys = [" ", "H", "AH", "H", " ", "M", " ", "I", "J", "I", " ", "J", "I", " ", "J", "K", " ",  "N", " ", "M", "H", "H"]
