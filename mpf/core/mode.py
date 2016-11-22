@@ -302,7 +302,7 @@ class Mode(object):
                                        callback=self._stopped)
         '''event: mode_(name)_stopping
 
-        The mode called "name" is stopping. This is a queue event. The
+        desc: The mode called "name" is stopping. This is a queue event. The
         mode won't actually stop until the queue is cleared.
 
         '''
@@ -531,11 +531,7 @@ class Mode(object):
 
     def _remove_mode_switch_handlers(self):
         for handler in self.switch_handlers:
-            self.machine.switch_controller.remove_switch_handler(
-                switch_name=handler['switch_name'],
-                callback=handler['callback'],
-                state=handler['state'],
-                ms=handler['ms'])
+            self.machine.switch_controller.remove_switch_handler_by_key(handler)
         self.switch_handlers = list()
 
     def _setup_timers(self):

@@ -30,6 +30,12 @@ achievement_groups:
     show_when_enabled: single|str|None
 achievements:
     __valid_in__: mode
+    show_tokens: dict|str:str|None
+    restart_after_stop_possible: single|bool|True
+    restart_on_next_ball_when_started: single|bool|False
+    enable_on_next_ball_when_enabled: single|bool|True
+    start_enabled: single|bool|False
+
     enable_events: dict|str:ms|None
     start_events: dict|str:ms|None
     complete_events: dict|str:ms|None
@@ -37,23 +43,21 @@ achievements:
     stop_events: dict|str:ms|None
     reset_events: dict|str:ms|None
     select_events: dict|str:ms|None
+
     events_when_enabled: list|str|None
     events_when_started: list|str|None
     events_when_completed: list|str|None
     events_when_stopped: list|str|None
     events_when_disabled: list|str|None
     events_when_selected: list|str|None
+
     show_when_enabled: single|str|None
     show_when_started: single|str|None
     show_when_completed: single|str|None
     show_when_stopped: single|str|None
     show_when_disabled: single|str|None
     show_when_selected: single|str|None
-    show_tokens: dict|str:str|None
-    restart_on_next_ball_when_started: single|bool|False
-    enable_on_next_ball_when_enabled: single|bool|True
-    restart_after_stop_possible: single|bool|True
-    start_enabled: single|bool|False
+
 animations:
     __valid_in__: machine, mode                 # todo add to validator
 assets:
@@ -297,6 +301,7 @@ drop_targets:
 drop_target_banks:
     __valid_in__: machine, mode
     drop_targets: list|machine(drop_targets)|
+    reset_on_complete: single|ms|None
     reset_coil: single|machine(coils)|None
     reset_coils: list|machine(coils)|None
     reset_events: dict|str:ms|machine_reset_phase_3, ball_starting
@@ -428,6 +433,15 @@ images:
     load: single|str|None
 keyboard:
     __valid_in__: machine                           # todo add to validator
+kickbacks:
+    __valid_in__: machine
+    coil: single|machine(coils)|
+    switch: single|machine(switches)|
+    reverse_switch: single|bool|False
+    enable_events: dict|str:ms|None
+    disable_events: dict|str:ms|ball_will_end, service_mode_entered
+    coil_overwrite: dict|str:str|None
+    switch_overwrite: dict|str:str|None
 kivy_config:
     __valid_in__: machine                           # todo add to validator
 led_player:
@@ -497,11 +511,11 @@ logic_blocks:                                       # todo add validation
         events: list|str|
     counter:
         count_events: list|str|
-        count_complete_value: single|int|None
+        count_complete_value: single|template_int|None
         multiple_hit_window: single|ms|0
         count_interval: single|int|1
         direction: single|str|up
-        starting_count: single|int|0
+        starting_count: single|template_int|0
     sequence:
         events: list|str|
 machine:
@@ -538,6 +552,20 @@ mode_settings:
     __allow_others__:
 modes:
     __valid_in__: machine                           # todo add to validator
+magnets:
+    __valid_in__: machine
+    magnet_coil: single|machine(coils)|
+    grab_switch: single|machine(switches)|None
+    grab_time: single|ms|1.5s
+    release_time: single|ms|500ms
+    fling_drop_time: single|ms|250ms
+    fling_regrab_time: single|ms|50ms
+    enable_events: dict|str:ms|None
+    disable_events: dict|str:ms|None
+    reset_events: dict|str:ms|machine_reset_phase_3, ball_starting
+    grab_ball_events: dict|str:ms|None
+    release_ball_events: dict|str:ms|None
+    fling_ball_events: dict|str:ms|None
 motors:
     __valid_in__: machine
     position_switches: dict|str:machine(switches)|
@@ -654,7 +682,7 @@ playfields:
 playfield_transfers:
     __valid_in__: machine
     ball_switch: single|machine(switches)|None
-    transfer_events: list|str:ms|None
+    transfer_events: dict|str:ms|None
     eject_target: single|machine(ball_devices)|
     captures_from: single|machine(ball_devices)|
 plugins:
@@ -799,6 +827,7 @@ show_player:
     action: single|enum(play,stop,pause,resume,advance,step_back,update)|play
     priority: single|int|0
     speed: single|float|1
+    block_queue: single|bool|False
     start_step: single|template_int|1
     loops: single|int|-1
     sync_ms: single|int|None
