@@ -3,19 +3,20 @@
 import logging
 from mpf.platforms.rasppinball.keypad import Keypad
 
-import asyncio
-
 from mpf.devices.driver import ConfiguredHwDriver
 from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform
 from mpf.platforms.interfaces.switch_platform_interface import SwitchPlatformInterface
 from mpf.platforms.interfaces.driver_platform_interface import DriverPlatformInterface
 from mpf.platforms.interfaces.rgb_led_platform_interface import RGBLEDPlatformInterface
 
+#from neopixel import *
+from neopixel import neopixel
+
 
 #class HardwarePlatform(MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform):
 class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
-    """Platform class for the OPP hardware.
+    """Platform class for the raspPinball hardware.
 
     Args:
         machine: The main ``MachineController`` instance.
@@ -29,26 +30,15 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
     fake_cnt = 0
 
     def __init__(self, machine):
-        """Initialise OPP platform."""
+        """Initialise raspPinball platform."""
         super(HardwarePlatform, self).__init__(machine)
         self.log = logging.getLogger('RASPPINBALL')
         self.log.info("Configuring raspPinball hardware.")
-
         self._poll_task = None
-        #self.features['tickless'] = True
-
+        self.strips = dict()
         self.switches = dict()
         self.drivers = dict()
         self.leds = dict()
-
-
-        #self.config = self.machine.config['rasppinball']
-        #self.machine.config_validator.validate_config("rasppinball", self.config)
-
-        self._kp = Keypad()
-        self.old_key = ""
-        self.key = ""
-
 
     def __repr__(self):
         """Return string representation."""
@@ -57,8 +47,35 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
     def initialize(self):
         """Initialise connections to raspPinball hardware."""
         self.log.info("Initialize raspPinball hardware.")
-        #self._poll_task = self.machine.clock.loop.create_task(self._poll_sender())
-        #self._poll_task.add_done_callback(self._done)
+
+        self.config = self.machine.config['rasppinball']
+        self.machine.config_validator.validate_config("rasppinball", self.config)
+        #self.machine_type = (
+        #    self.machine.config['hardware']['driverboards'].lower())
+
+
+        #  keypad
+        self._kp = Keypad()
+        self.old_key = ""
+        self.key = ""
+        #  leds
+        self.init_strips()
+
+    def stop(self):
+        pass
+
+    def init_strips(self):
+        """read strips config and init objects"""
+        #!!161126:VG:init_strips
+        # read only one for now...
+        #self.machine.config_validator.validate_config("rasp_strip_leds", rasp_strip_leds)
+        strip_config = self.config
+        self.strip = neopixel.Adafruit_NeoPixel(
+            strip_config['count'], strip_config['pin'], strip_config['freq'], strip_config['dma'],
+            strip_config['invert'], strip_config['brightness'])
+        # Intialize the library (must be called once before other functions).
+        self.strip.begin()
+        #self.strips[strip_name] = self.strip
 
     def fake_keypad(self):
         c = self.fake_keys[self.fake_idx]
@@ -110,26 +127,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         del dt
         self.update_kb()
 
-    @asyncio.coroutine
-    def _poll_sender(self):
-        """Poll switches."""
-        while True:
-            yield from self.update_kb()
-            yield from asyncio.sleep(.01, loop=self.machine.clock.loop)
-
-
-    @staticmethod
-    def _done(future):
-        """Evaluate result of task.
-
-        Will raise exceptions from within task.
-        """
-        future.result()
-
-
-    def stop(self):
-        if self._poll_task:
-            self._poll_task.cancel()
 
     def get_hw_switch_states(self):
         """Get initial hardware switch states."""
@@ -142,6 +139,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             else:
                 hw_states[number] = 0
         return hw_states
+
 
     def configure_switch(self, config: dict):
         """Configure a switch.
@@ -185,7 +183,9 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         number = config['number']
         print("configure_led(%s)" % number)
-        led = RASPLed(config, number)
+        #strip = self.strips[0]
+        strip = self.strip
+        led = RASPLed(config, number, strip)
         self.leds[number] = led
         return led
 
@@ -300,11 +300,12 @@ class RASPSwitch(SwitchPlatformInterface):
 class RASPLed(RGBLEDPlatformInterface):
 
 
-    def __init__(self, config, number):
+    def __init__(self, config, number, strip):
         """Initialise led."""
         self.number = number
         self.current_color = '000000'
         self.log = logging.getLogger('RASPLed')
+        self.strip = strip
 
     def color(self, color):
         """Set the LED to the specified color.
