@@ -1,1 +1,10 @@
 
+[submodule "mpf/pyserial-asyncio"]
+	path = mpf/pyserial-asyncio
+	url = https://github.com/pyserial/pyserial-asyncio
+[submodule "mpf/serial_asyncio"]
+	path = mpf/serial_asyncio
+	url = https://github.com/pyserial/pyserial-asyncio
+[submodule "mpf/core/serial_asyncio"]
+	path = mpf/core/serial_asyncio
+	url = https://github.com/pyserial/pyserial-asyncio

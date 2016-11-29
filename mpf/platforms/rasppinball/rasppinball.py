@@ -10,7 +10,8 @@ from mpf.platforms.interfaces.driver_platform_interface import DriverPlatformInt
 from mpf.platforms.interfaces.rgb_led_platform_interface import RGBLEDPlatformInterface
 
 #from neopixel import *
-from neopixel import neopixel
+#from neopixel import neopixel
+from neopixel import *
 
 
 #class HardwarePlatform(MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform):
@@ -48,8 +49,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """Initialise connections to raspPinball hardware."""
         self.log.info("Initialize raspPinball hardware.")
 
-        self.config = self.machine.config['rasppinball']
-        self.machine.config_validator.validate_config("rasppinball", self.config)
+        #self.config = self.machine.config['rasppinball']
+        #self.machine.config_validator.validate_config("rasppinball", self.config)
         #self.machine_type = (
         #    self.machine.config['hardware']['driverboards'].lower())
 
@@ -69,14 +70,17 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #!!161126:VG:init_strips
         # read only one for now...
         #self.machine.config_validator.validate_config("rasp_strip_leds", rasp_strip_leds)
-        strip_config = self.config
-        self.strip = neopixel.Adafruit_NeoPixel(
-            strip_config['count'], strip_config['pin'], strip_config['freq'], strip_config['dma'],
-            strip_config['invert'], strip_config['brightness'])
+        #strip_config = self.config
+        #self.strip = neopixel.Adafruit_NeoPixel(
+        #    strip_config['count'], strip_config['pin'], strip_config['freq'], strip_config['dma'],
+        #    strip_config['invert'], strip_config['brightness'])
+
+        self.strip = Adafruit_NeoPixel(32, 18, 800000, 5, False, 255)
+
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
         #self.strips[strip_name] = self.strip
-        self.strip.updated = False
+        #self.strip.updated = False
 
     def fake_keypad(self):
         c = self.fake_keys[self.fake_idx]
@@ -128,9 +132,9 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         del dt
         self.update_kb()
 
-        if self.strip.updated:
-            self.strip.updated = False
-            self.strip.show()
+        #if self.strip.updated:
+        #    self.strip.updated = False
+        self.strip.show()
 
 
     def get_hw_switch_states(self):
@@ -326,7 +330,22 @@ class RASPLed(RGBLEDPlatformInterface):
                                        hex(int(color[1]))[2:].zfill(2),
                                        hex(int(color[2]))[2:].zfill(2))
         self.log.info("color(%s -> %s)" % (self.number, new_color))
-        #print("color(%s -> %s)" % (self.number, new_color))
+        #if self.current_color != new_color:
+        #    print("color(%s -> %s)" % (self.number, new_color))
+        #    #print(color)
+        try:
+            nb = int(self.number)
+        except:
+            return # no update possible !
+        #self.strip.setPixelColor(self.number, self.current_color)
+        try:
+            c = self.current_color
+            t = Color(int(c[:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+            #if self.current_color != new_color:
+            #    print("setpixel ", nb, "=", t)
+            self.strip.setPixelColor(nb, t)
+            #self.strip.show()
+        except:
+            pass
         self.current_color = new_color
-        self.strip.setPixelColor(self.number, self.current_color)
         self.strip.updated = True
