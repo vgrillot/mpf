@@ -76,6 +76,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
         #self.strips[strip_name] = self.strip
+        self.strip.updated = False
 
     def fake_keypad(self):
         c = self.fake_keys[self.fake_idx]
@@ -126,6 +127,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """check with tick..."""
         del dt
         self.update_kb()
+
+        if self.strip.updated:
+            self.strip.updated = False
+            self.strip.show()
 
 
     def get_hw_switch_states(self):
@@ -323,3 +328,5 @@ class RASPLed(RGBLEDPlatformInterface):
         self.log.info("color(%s -> %s)" % (self.number, new_color))
         #print("color(%s -> %s)" % (self.number, new_color))
         self.current_color = new_color
+        self.strip.setPixelColor(self.number, self.current_color)
+        self.strip.updated = True
