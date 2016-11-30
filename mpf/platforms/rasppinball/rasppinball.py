@@ -329,7 +329,7 @@ class RASPLed(RGBLEDPlatformInterface):
         new_color = "{0}{1}{2}".format(hex(int(color[0]))[2:].zfill(2),
                                        hex(int(color[1]))[2:].zfill(2),
                                        hex(int(color[2]))[2:].zfill(2))
-        self.log.info("color(%s -> %s)" % (self.number, new_color))
+        #self.log.info("color(%s -> %s)" % (self.number, new_color))
         #if self.current_color != new_color:
         #    print("color(%s -> %s)" % (self.number, new_color))
         #    #print(color)
@@ -339,8 +339,10 @@ class RASPLed(RGBLEDPlatformInterface):
             return # no update possible !
         #self.strip.setPixelColor(self.number, self.current_color)
         try:
+            #r, g, b = color
+            g, r, b = color
             c = self.current_color
-            t = Color(int(c[:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+            t = Color(r, g, b)
             #if self.current_color != new_color:
             #    print("setpixel ", nb, "=", t)
             self.strip.setPixelColor(nb, t)
