@@ -20,17 +20,6 @@ class TestShows(MpfTestCase):
     def event_handler(self, **kwargs):
         pass
 
-    def assertColorAlmostEqual(self, color1, color2, delta=6):
-        if isinstance(color1, RGBColor) and isinstance(color2, RGBColor):
-            difference = abs(color1.red - color2.red) +\
-                abs(color1.blue - color2.blue) +\
-                abs(color1.green - color2.green)
-        else:
-            difference = abs(color1[0] - color2[0]) +\
-                abs(color1[1] - color2[1]) +\
-                abs(color1[2] - color2[2])
-        self.assertLessEqual(difference, delta, "Colors do not match: " + str(color1) + " " + str(color2))
-
     def test_default_shows(self):
         # test off
         show_on = self.machine.shows['off'].play(show_tokens=dict(leds='led_01', lights='light_01'))
@@ -805,3 +794,69 @@ class TestShows(MpfTestCase):
         self.assertEventNotCalled("step2")
         self.assertEventNotCalled("step3")
         done.assert_called_once_with()
+
+    def test_show_player_emitted_events(self):
+        self.mock_event('test_show1_played')
+        self.mock_event('test_show1_played2')
+        self.mock_event('test_show1_stopped')
+        self.mock_event('test_show1_looped')
+        self.mock_event('test_show1_paused')
+        self.mock_event('test_show1_resumed')
+        self.mock_event('test_show1_advanced')
+        self.mock_event('test_show1_stepped_back')
+        self.mock_event('test_show1_completed')
+
+        self.machine.events.post('play_with_emitted_events')
+        self.advance_time_and_run(1)
+        self.assertEventCalled('test_show1_played')
+        self.assertEventCalled('test_show1_played2')
+        self.assertEventNotCalled('test_show1_stopped')
+        self.assertEventNotCalled('test_show1_looped')
+        self.assertEventNotCalled('test_show1_paused')
+        self.assertEventNotCalled('test_show1_resumed')
+        self.assertEventNotCalled('test_show1_advanced')
+        self.assertEventNotCalled('test_show1_stepped_back')
+        self.assertEventNotCalled('test_show1_completed')
+
+        self.advance_time_and_run(6)
+        self.assertEventCalled('test_show1_looped')
+        self.assertEventNotCalled('test_show1_stopped')
+        self.assertEventNotCalled('test_show1_paused')
+        self.assertEventNotCalled('test_show1_resumed')
+        self.assertEventNotCalled('test_show1_advanced')
+        self.assertEventNotCalled('test_show1_stepped_back')
+
+        self.machine.events.post('pause_emitted_events_show')
+        self.advance_time_and_run(1)
+        self.assertEventCalled('test_show1_paused')
+
+        self.machine.events.post('advance_emitted_events_show')
+        self.advance_time_and_run(1)
+        self.assertEventCalled('test_show1_advanced')
+
+        self.machine.events.post('step_back_emitted_events_show')
+        self.advance_time_and_run(1)
+        self.assertEventCalled('test_show1_stepped_back')
+
+        self.machine.events.post('resume_emitted_events_show')
+        self.advance_time_and_run(1)
+        self.assertEventCalled('test_show1_resumed')
+
+        self.machine.events.post('stop_emitted_events_show')
+        self.advance_time_and_run(1)
+        self.assertEventCalled('test_show1_stopped')
+
+        self.assertEventNotCalled('test_show1_completed')
+
+    def test_show_player_completed_events(self):
+        self.mock_event('test_show1_completed')
+        self.mock_event('test_show1_stopped')
+
+        self.machine.events.post('play_with_completed_event')
+        self.advance_time_and_run(1)
+        self.assertEventNotCalled('test_show1_completed')
+        self.assertEventNotCalled('test_show1_stopped')
+
+        self.advance_time_and_run(6)
+        self.assertEventCalled('test_show1_completed')
+        self.assertEventCalled('test_show1_stopped')
