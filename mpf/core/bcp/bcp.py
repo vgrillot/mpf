@@ -19,11 +19,9 @@ class Bcp(MpfController):
         self.transport = BcpTransportManager(machine)
         self.servers = []
 
-        if not self.machine.options['bcp']:
-            return
-
-        self.machine.events.add_handler('init_phase_2',
-                                        self._setup_bcp_connections)
+        if self.machine.options['bcp']:
+            self.machine.events.add_handler('init_phase_2',
+                                            self._setup_bcp_connections)
 
         self.machine.events.add_handler('init_phase_4',
                                         self._setup_bcp_servers)
@@ -47,6 +45,7 @@ class Bcp(MpfController):
             return
 
         for name, settings in self.machine.config['bcp']['connections'].items():
+            settings = self.machine.config_validator.validate_config("bcp:connections", settings)
             client = Util.string_to_class(settings['type'])(self.machine, name, self.machine.bcp)
             if client.connect(settings):
                 client.exit_on_close = settings['exit_on_close']
@@ -59,6 +58,7 @@ class Bcp(MpfController):
             return
 
         for settings in self.machine.config['bcp']['servers'].values():
+            settings = self.machine.config_validator.validate_config("bcp:servers", settings)
             server = BcpServer(self.machine, settings['ip'], settings['port'], settings['type'])
             self.machine.clock.loop.run_until_complete(server.start())
             self.servers.append(server)
