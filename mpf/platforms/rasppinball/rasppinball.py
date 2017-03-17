@@ -8,6 +8,7 @@ from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform,
 from mpf.platforms.interfaces.switch_platform_interface import SwitchPlatformInterface
 from mpf.platforms.interfaces.driver_platform_interface import DriverPlatformInterface
 from mpf.platforms.interfaces.rgb_led_platform_interface import RGBLEDPlatformInterface
+from mpf.platforms.base_serial_communicator import BaseSerialCommunicator
 
 #from neopixel import *
 from neopixel import neopixel
@@ -39,6 +40,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.switches = dict()
         self.drivers = dict()
         self.leds = dict()
+        self.serial_connections = dict()
 
     def __repr__(self):
         """Return string representation."""
@@ -62,6 +64,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.init_strips()
 
     def stop(self):
+        # TODO: send a stop to arduino
         pass
 
     def init_strips(self):
@@ -246,7 +249,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
     def set_pulse_on_hit_and_enable_and_release_and_disable_rule(self, enable_switch, disable_switch, coil):
         """Set pulse on hit and enable and release and disable rule on driver.
 
-        Pulses a driver when a switch is hit. Then enables the driver (may be with pwm). When the switch is released
+    Pulses a driver when a switch is hit. Then enables the driver (may be with pwm). When the switch is released
         the pulse is canceled and the driver gets disabled. When the second disable_switch is hit the pulse is canceled
         and the driver gets disabled. Typically used on the main coil for dual coil flippers with eos switch.
         """
@@ -255,6 +258,17 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #raise NotImplementedError
         pass
 
+
+    def _connect_to_hardware(self):
+        """Connect to each port from the config.
+
+        This process will cause the connection threads to figure out which processor they've connected to
+        and to register themselves.
+        """
+        for port in self.config['ports']:
+            self.serial_connections.add(RaspSerialCommunicator(
+                platform=self, port=port,
+                baud=self.config['baud']))
 
 
 class RASPDriver(DriverPlatformInterface):
@@ -306,6 +320,7 @@ class RASPDriver(DriverPlatformInterface):
                        (coil.config['label'], coil.hw_driver.number, milliseconds))
         return milliseconds
 
+
 class RASPSwitch(SwitchPlatformInterface):
 
     def __init__(self, config, number):
@@ -321,7 +336,6 @@ class RASPSwitch(SwitchPlatformInterface):
 
 
 class RASPLed(RGBLEDPlatformInterface):
-
 
     def __init__(self, config, number, strip):
         """Initialise led."""
@@ -348,3 +362,27 @@ class RASPLed(RGBLEDPlatformInterface):
         self.current_color = new_color
         self.strip.setPixelColor(self.number, self.current_color)
         self.strip.updated = True
+
+
+
+class RaspSerialCommunicator(BaseSerialCommunicator):
+    """Protocol implementation to the Arduino"""
+
+    def _parse_msg(self, msg):
+        """Parse a message.
+
+        Msg may be partial.
+        Args:
+            msg: Bytes of the message (part) received.
+        """
+        raise NotImplementedError("Implement!")
+
+
+    @asyncio.coroutine
+    def _identify_connection(self):
+        """Initialise and identify connection."""
+        raise NotImplementedError("Implement!")
+
+
+
+
