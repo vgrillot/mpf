@@ -368,6 +368,19 @@ class RASPLed(RGBLEDPlatformInterface):
 class RaspSerialCommunicator(BaseSerialCommunicator):
     """Protocol implementation to the Arduino"""
 
+    def __init__(self, platform, port, baud):
+        """Initialise communicator.
+
+        Args:
+            platform(mpf.platforms.fast.fast.HardwarePlatform): the fast hardware platform
+            port: serial port
+            baud: baud rate
+        """
+        self.received_msg = ''
+        super().__init__(platform, port, baud)
+
+
+
     def _parse_msg(self, msg):
         """Parse a message.
 
@@ -375,7 +388,14 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         Args:
             msg: Bytes of the message (part) received.
         """
-        raise NotImplementedError("Implement!")
+        self.received_msg += msg
+
+        while True:
+            pos = self.received_msg.find(b'\r')
+
+            # no more complete messages
+            if pos == -1:
+                break
 
 
     @asyncio.coroutine
