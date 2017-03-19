@@ -75,7 +75,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #    strip_config['count'], strip_config['pin'], strip_config['freq'], strip_config['dma'],
         #    strip_config['invert'], strip_config['brightness'])
 
-        self.strip = Adafruit_NeoPixel(32, 18, 800000, 5, False, 255)
+        self.strip = Adafruit_NeoPixel(64, 18, 800000, 5, False, 255)
 
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
