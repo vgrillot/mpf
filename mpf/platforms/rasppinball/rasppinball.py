@@ -29,7 +29,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
     fake_idx = 0
     fake_cnt = 0
 
-
     def __init__(self, machine):
         """Initialise raspPinball platform."""
         super(HardwarePlatform, self).__init__(machine)
@@ -40,7 +39,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.switches = dict()
         self.drivers = dict()
         self.leds = dict()
-        self.serial_connections = dict()
+        #self.serial_connections = dict()
+        self.communicator = None
 
     def __repr__(self):
         """Return string representation."""
@@ -54,7 +54,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.machine.config_validator.validate_config("rasppinball", self.config)
         #self.machine_type = (
         #    self.machine.config['hardware']['driverboards'].lower())
-
 
         #  keypad
         self._kp = Keypad()
@@ -212,8 +211,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         self.log.info("clear_hw_rule(%s %s %s)" %
                        (switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
-        #raise NotImplementedError
-        pass
+        self.communicator.rule_clear(coil.hw_driver.number, switch.hw_switch.number)
 
     def set_pulse_on_hit_rule(self, enable_switch, coil):
         """Set pulse on hit rule on driver.
@@ -223,8 +221,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         self.log.info("set_pulse_on_hit_rule(%s %s %s)" %
                        (enable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
-        #raise NotImplementedError
-        pass
+        self.communicator.rule_add(1, coil.hw_driver.number, enable_switch.hw_switch.number)
 
     def set_pulse_on_hit_and_release_rule(self, enable_switch, coil):
         """Set pulse on hit and release rule to driver.
@@ -234,8 +231,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         self.log.info("set_pulse_on_hit_and_release_rule(%s %s %s)" %
                        (enable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
-        #raise NotImplementedError
-        pass
+        self.communicator.rule_add(2, coil.hw_driver.number, enable_switch.hw_switch.number)
 
     def set_pulse_on_hit_and_enable_and_release_rule(self, enable_switch, coil):
         """Set pulse on hit and enable and relase rule on driver.
@@ -245,8 +241,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         self.log.info("set_pulse_on_hit_and_enable_and_release_rule(%s %s %s)" %
                        (enable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
-        #raise NotImplementedError
-        pass
+        self.communicator.rule_add(3, coil.hw_driver.number, enable_switch.hw_switch.number)
 
     def set_pulse_on_hit_and_enable_and_release_and_disable_rule(self, enable_switch, disable_switch, coil):
         """Set pulse on hit and enable and release and disable rule on driver.
@@ -257,8 +252,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         self.log.info("set_pulse_on_hit_and_enable_and_release_and_disable_rule(%s %s %s %s)" %
                        (enable_switch.hw_switch.number, disable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
-        #raise NotImplementedError
-        pass
+        self.communicator.rule_add(4, coil.hw_driver.number, enable_switch.hw_switch.number, disable_sw_id=disable_switch.hw_switch.number)
 
 
     def _connect_to_hardware(self):
@@ -267,10 +261,43 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         This process will cause the connection threads to figure out which processor they've connected to
         and to register themselves.
         """
-        for port in self.config['ports']:
-            self.serial_connections.add(RaspSerialCommunicator(
-                platform=self, port=port,
-                baud=self.config['baud']))
+        if len(self.config['ports']) > 1:
+            self.log.fatal("only one slave com port is supported")
+        if len(self.config['ports']) == 0:
+            self.log.warning("no communication port setted!")
+            return
+        port = self.config['ports'][0]
+        self.communicator = RaspSerialCommunicator(
+            platform=self, port=port,
+            baud=self.config['baud'])
+
+    def process_received_message(self, msg: str):
+        """Send an incoming message from the FAST controller to the proper method for servicing.
+
+        Args:
+            msg: messaged which was received
+        """
+        cmd, all_param = msg.split(":")
+        params = all_param.split(";")
+
+        if cmd == "":
+            pass
+        elif cmd == "SWU":      # switch update
+            sw_id = params[0]
+            sw_state = int(params[1])
+            self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
+        elif cmd == "DBG":      # debug message
+            self.log.debug("RECV:%s" % msg)
+        elif cmd == "WRN":  # warning message
+            self.log.warning("RECV:%s" % msg)
+        elif cmd == "ERR":  # warning message
+            self.log.error("RECV:%s" % msg)
+        else:
+            self.log.warning("Received unknown serial command? %s. (This is ok"
+                             " to ignore for now while the FAST platform is in "
+                             "development)", msg)
+
+
 
 
 class RASPDriver(DriverPlatformInterface):
@@ -279,10 +306,6 @@ class RASPDriver(DriverPlatformInterface):
         """Initialise driver."""
         super().__init__(config, number)
         self.log = logging.getLogger('RASPDriver')
-        #self.proc = platform.proc
-        #self.machine = platform.machine
-        #self.pdbconfig = getattr(platform, "pdbconfig", None)
-
         self.log.info("Driver Settings for %s", self.number)
 
     def disable(self, coil):
@@ -394,16 +417,35 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
 
         while True:
             pos = self.received_msg.find(b'\r')
-
-            # no more complete messages
-            if pos == -1:
+            if pos == -1: # no full msg
                 break
-
+            self.platform.process_received_message(self.received_msg[:pos].decode())
+            self.received_msg = self.received_msg[pos + 1:]
 
     @asyncio.coroutine
     def _identify_connection(self):
         """Initialise and identify connection."""
         raise NotImplementedError("Implement!")
+
+    def rule_clear(self, coil_pin, enable_sw_id):
+        msg = "RUL:CLR:%d:%d\n" % (coil_pin, enable_sw_id)
+        self.send(msg)
+
+    def rule_add(self, hwrule_type, coil_pin, enable_sw_id, disable_sw_id=0, duration=10):
+        msg = "RUL:ADD:%d:%d:%d:%d:%d\n" % (hwrule_type, coil_pin, enable_sw_id, disable_sw_id, duration)
+        self.send(msg)
+
+    def driver_pulse(self, coil_pin):
+        msg = "DRV:PUL:%d\n" % (coil_pin)
+        self.send(msg)
+
+    def driver_enable(self, coil_pin):
+        msg = "DRV:ENB:%d\n" % (coil_pin)
+        self.send(msg)
+
+    def driver_disable(self, coil_pin):
+        msg = "DRV:DIS:%d\n" % (coil_pin)
+        self.send(msg)
 
 
 
