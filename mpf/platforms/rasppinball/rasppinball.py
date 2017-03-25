@@ -10,8 +10,8 @@ from mpf.platforms.interfaces.driver_platform_interface import DriverPlatformInt
 from mpf.platforms.interfaces.rgb_led_platform_interface import RGBLEDPlatformInterface
 from mpf.platforms.base_serial_communicator import BaseSerialCommunicator
 
-#from neopixel import *
-from neopixel import neopixel
+from neopixel import * # ok sur raspberry
+#from neopixel import neopixel #don't find it on raspberry
 
 
 #class HardwarePlatform(MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform):
@@ -382,11 +382,16 @@ class RASPLed(RGBLEDPlatformInterface):
         new_color = "{0}{1}{2}".format(hex(int(color[0]))[2:].zfill(2),
                                        hex(int(color[1]))[2:].zfill(2),
                                        hex(int(color[2]))[2:].zfill(2))
-        #self.log.info("color(%s -> %s)" % (self.number, new_color))
+        #self.log.info("color(%s : %s -> %s)" % (self.number, color, new_color))
         #print("color(%s -> %s)" % (self.number, new_color))
-        self.current_color = new_color
-        self.strip.setPixelColor(self.number, self.current_color)
-        self.strip.updated = True
+        try:
+            self.current_color = new_color
+            #self.strip.setPixelColor(int(self.number), self.current_color)
+            self.strip.setPixelColorRGB(int(self.number), color[0], color[1], color[2])
+
+            self.strip.updated = True
+        except Exception as e:
+            self.log.error("led update error" + str(e))
 
 
 
@@ -422,7 +427,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
             self.platform.process_received_message(self.received_msg[:pos].decode())
             self.received_msg = self.received_msg[pos + 1:]
 
-    @asyncio.coroutine
+    #@asyncio.coroutine
     def _identify_connection(self):
         """Initialise and identify connection."""
         raise NotImplementedError("Implement!")
