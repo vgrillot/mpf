@@ -155,7 +155,7 @@ class Multiball(SystemWideDevice, ModeDevice):
         desc: The multiball called (name) has lost a ball after ball save expired.
         '''
 
-        if self.machine.game.balls_in_play - balls < 1:
+        if not self.machine.game or self.machine.game.balls_in_play - balls < 1:
             self.balls_added_live = 0
             self.balls_live_target = 0
             self.machine.events.remove_handler(self._ball_drain_count_balls)
@@ -181,6 +181,24 @@ class Multiball(SystemWideDevice, ModeDevice):
 
         # add handler for ball_drain until self.balls_ejected are drained
         self.machine.events.add_handler('ball_drain', self._ball_drain_count_balls)
+
+    def add_a_ball(self, **kwargs):
+        """Add a ball if multiball has started."""
+        del kwargs
+        if self.balls_live_target > 0:
+            self.debug_log("Adding a ball.")
+            self.balls_live_target += 1
+            self.balls_added_live += 1
+            self.machine.game.balls_in_play += 1
+            self.source_playfield.add_ball(balls=1)
+
+    def start_or_add_a_ball(self, **kwargs):
+        """Start multiball or add a ball if multiball has started."""
+        del kwargs
+        if self.balls_live_target > 0:
+            self.add_a_ball()
+        else:
+            self.start()
 
     def enable(self, **kwargs):
         """Enable the multiball.

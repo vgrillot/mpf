@@ -607,6 +607,15 @@ class TestMultiBall(MpfTestCase):
         self.assertEqual(3, self.machine.playfield.balls)
         self.assertEqual(0, self.machine.ball_devices.bd_lock.balls)
 
+        # game ends (because of slam tilt)
+        self.machine.game.stop()
+        self.advance_time_and_run()
+
+        # this should not crash
+        self.machine.default_platform.add_ball_to_device(self.machine.ball_devices.bd_trough)
+        self.advance_time_and_run()
+
+
     def test_total_ball_count(self):
         # prepare game
         self.machine.ball_controller.num_balls_known = 0
@@ -756,3 +765,55 @@ class TestMultiBall(MpfTestCase):
         self.assertEqual(4, self.machine.playfield.balls)
         self.assertEqual(4, self.machine.game.balls_in_play)
         self.assertTrue(self.machine.multiballs.mb11.shoot_again)
+
+    def testAddABall(self):
+        self.mock_event("multiball_mb_add_a_ball_ended")
+
+        # prepare game
+        self.machine.ball_controller.num_balls_known = 0
+        self.machine.switch_controller.process_switch('s_ball_switch1', 1)
+        self.machine.switch_controller.process_switch('s_ball_switch2', 1)
+        self.machine.switch_controller.process_switch('s_ball_switch3', 1)
+        self.machine.switch_controller.process_switch('s_ball_switch4', 1)
+        self.machine.switch_controller.process_switch('s_ball_switch5', 1)
+        self.machine.switch_controller.process_switch('s_ball_switch6', 1)
+
+        self.advance_time_and_run(10)
+        self.assertEqual(6, self.machine.ball_controller.num_balls_known)
+        self.assertEqual(6, self.machine.ball_devices.bd_trough.balls)
+
+        # start game
+        self.machine.switch_controller.process_switch('s_start', 1)
+        self.machine.switch_controller.process_switch('s_start', 0)
+        self.machine_run()
+
+        self.post_event("start_or_add")
+        self.advance_time_and_run(10)
+        self.assertBallsOnPlayfield(2)
+
+        self.post_event("start_or_add")
+        self.advance_time_and_run(5)
+        self.assertBallsOnPlayfield(3)
+
+        self.machine.default_platform.add_ball_to_device(self.machine.ball_devices.bd_trough)
+        self.advance_time_and_run(5)
+        self.assertBallsOnPlayfield(2)
+        self.assertEventNotCalled("multiball_mb_add_a_ball_ended")
+
+        self.post_event("add_ball")
+        self.advance_time_and_run(5)
+        self.assertBallsOnPlayfield(3)
+
+        self.machine.default_platform.add_ball_to_device(self.machine.ball_devices.bd_trough)
+        self.advance_time_and_run(5)
+        self.assertBallsOnPlayfield(2)
+        self.assertEventNotCalled("multiball_mb_add_a_ball_ended")
+
+        self.machine.default_platform.add_ball_to_device(self.machine.ball_devices.bd_trough)
+        self.advance_time_and_run(5)
+        self.assertBallsOnPlayfield(1)
+        self.assertEventCalled("multiball_mb_add_a_ball_ended")
+
+        self.post_event("add_ball")
+        self.advance_time_and_run(5)
+        self.assertBallsOnPlayfield(1)

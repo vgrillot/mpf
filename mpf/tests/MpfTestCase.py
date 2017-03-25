@@ -110,9 +110,9 @@ class MpfTestCase(unittest.TestCase):
     def get_abs_path(self, path):
         return os.path.join(os.path.abspath(os.curdir), path)
 
-    def post_event(self, event_name):
+    def post_event(self, event_name, run_time=0):
         self.machine.events.post(event_name)
-        self.machine_run()
+        self.advance_time_and_run(run_time)
 
     def post_event_with_params(self, event_name, **params):
         self.machine.events.post(event_name, **params)
@@ -203,7 +203,11 @@ class MpfTestCase(unittest.TestCase):
         pass
 
     def _exception_handler(self, loop, context):
-        loop.stop()
+        try:
+            loop.stop()
+        except RuntimeError:
+            pass
+
         self._exception = context
 
     def setUp(self):
@@ -277,6 +281,12 @@ class MpfTestCase(unittest.TestCase):
                                         handler=self._mock_event_handler,
                                         event_name=event_name)
 
+    def assertBallsOnPlayfield(self, balls, playfield="playfield"):
+        self.assertEqual(balls, self.machine.playfields[playfield].balls)
+
+    def assertAvailableBallsOnPlayfield(self, balls, playfield="playfield"):
+        self.assertEqual(balls, self.machine.playfields[playfield].available_balls)
+
     def assertPlayerVarEqual(self, value, player_var):
         self.assertIsNotNone(self.machine.game, "There is no game.")
         self.assertEqual(value, self.machine.game.player[player_var], "Value of player var {} is {} but should be {}".
@@ -287,12 +297,23 @@ class MpfTestCase(unittest.TestCase):
         self.assertEqual(state, self.machine.switch_controller.is_active(name))
 
     def assertLedColor(self, led_name, color):
+        if isinstance(color, str) and color.lower() == 'on':
+            color = self.machine.leds[led_name].config['default_color']
+
         self.assertEqual(list(RGBColor(color).rgb), self.machine.leds[led_name].hw_driver.current_color)
 
-    def assertLedColors(self, led_name, color_list, secs, check_delta=.1):
+    def assertLedColors(self, led_name, color_list, secs=1, check_delta=.1):
         colors = list()
 
-        for x in range(secs*10):
+        # have to do it this weird way because `if 'on' in color_list:` doesn't
+        # work since it tries to convert it to a color
+        for color in color_list[:]:
+            if isinstance(color, str) and color.lower() == 'on':
+                color_list.remove('on')
+                color_list.append(self.machine.leds[led_name].config['default_color'])
+                break
+
+        for x in range(int(secs / check_delta)):
             colors.append(RGBColor(self.machine.leds[led_name].hw_driver.current_color))
             self.advance_time_and_run(check_delta)
 
@@ -337,7 +358,7 @@ class MpfTestCase(unittest.TestCase):
         self.assertEqual(kwargs, self._last_event_kwargs[event_name], "Args for {} differ.".format(event_name))
 
     def assertShotShow(self, shot_name, show_name):
-        """Assert that the highest priority runnning show for a shot is a
+        """Assert that the highest priority running show for a shot is a
         certain show name."""
         if shot_name not in self.machine.shots:
             raise AssertionError("Shot {} is not a valid shot".format(shot_name))
@@ -348,6 +369,61 @@ class MpfTestCase(unittest.TestCase):
             self.assertEqual(show_name, self.machine.shots[shot_name].profiles[0]['running_show'].name)
         else:
             self.assertIsNone(self.machine.shots[shot_name].profiles[0]['running_show'])
+
+    def assertShotProfile(self, shot_name, profile_name):
+        """Assert that the highest priority profile for a shot is a
+        certain profile name."""
+        if shot_name not in self.machine.shots:
+            raise AssertionError("Shot {} is not a valid shot".format(shot_name))
+
+        if profile_name:
+            self.assertIsNotNone(self.machine.shots[shot_name].profiles)
+            self.assertIsNotNone(self.machine.shots[shot_name].profiles[0]['profile'])
+            self.assertEqual(profile_name, self.machine.shots[shot_name].profiles[0]['profile'])
+        else:
+            self.assertIsNone(self.machine.shots[shot_name].profiles[0]['profile'])
+
+    def assertShotProfileState(self, shot_name, state_name):
+        """Assert that the highest priority profile for a shot is in a certain
+        state."""
+        if shot_name not in self.machine.shots:
+            raise AssertionError("Shot {} is not a valid shot".format(shot_name))
+
+        if state_name:
+            self.assertIsNotNone(self.machine.shots[shot_name].profiles)
+            self.assertIsNotNone(self.machine.shots[shot_name].profiles[0]['current_state_name'])
+            self.assertEqual(state_name, self.machine.shots[shot_name].profiles[0]['current_state_name'])
+        else:
+            self.assertIsNone(self.machine.shots[shot_name].profiles[0]['current_state_name'])
+
+    def assertShotEnabled(self, shot_name):
+        if shot_name not in self.machine.shots:
+            raise AssertionError("Shot {} is not a valid shot".format(shot_name))
+
+        self.assertTrue(self.machine.shots[shot_name].profiles[0]['enable'])
+
+    def assertShowRunning(self, show_name):
+        for running_show in self.machine.show_controller.running_shows:
+            if self.machine.shows[show_name] == running_show.show:
+                return
+
+        self.fail("Show {} not running".format(show_name))
+
+    def assertShowNotRunning(self, show_name):
+        for running_show in self.machine.show_controller.running_shows:
+            if self.machine.shows[show_name] == running_show.show:
+                self.fail("Show {} should not be running".format(show_name))
+
+    def assertColorAlmostEqual(self, color1, color2, delta=6):
+        if isinstance(color1, RGBColor) and isinstance(color2, RGBColor):
+            difference = abs(color1.red - color2.red) +\
+                abs(color1.blue - color2.blue) +\
+                abs(color1.green - color2.green)
+        else:
+            difference = abs(color1[0] - color2[0]) +\
+                abs(color1[1] - color2[1]) +\
+                abs(color1[2] - color2[2])
+        self.assertLessEqual(difference, delta, "Colors do not match: " + str(color1) + " " + str(color2))
 
     def get_timer(self, timer):
         for mode in self.machine.modes:

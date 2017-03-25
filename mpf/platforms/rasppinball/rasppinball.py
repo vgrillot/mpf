@@ -8,15 +8,14 @@ from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform,
 from mpf.platforms.interfaces.switch_platform_interface import SwitchPlatformInterface
 from mpf.platforms.interfaces.driver_platform_interface import DriverPlatformInterface
 from mpf.platforms.interfaces.rgb_led_platform_interface import RGBLEDPlatformInterface
+from mpf.platforms.base_serial_communicator import BaseSerialCommunicator
 
 #from neopixel import *
-#from neopixel import neopixel
-from neopixel import *
+from neopixel import neopixel
 
 
 #class HardwarePlatform(MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform):
 class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
-
     """Platform class for the raspPinball hardware.
 
     Args:
@@ -30,6 +29,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
     fake_idx = 0
     fake_cnt = 0
 
+
     def __init__(self, machine):
         """Initialise raspPinball platform."""
         super(HardwarePlatform, self).__init__(machine)
@@ -40,6 +40,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.switches = dict()
         self.drivers = dict()
         self.leds = dict()
+        self.serial_connections = dict()
 
     def __repr__(self):
         """Return string representation."""
@@ -49,8 +50,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """Initialise connections to raspPinball hardware."""
         self.log.info("Initialize raspPinball hardware.")
 
-        #self.config = self.machine.config['rasppinball']
-        #self.machine.config_validator.validate_config("rasppinball", self.config)
+        self.config = self.machine.config['rasppinball']
+        self.machine.config_validator.validate_config("rasppinball", self.config)
         #self.machine_type = (
         #    self.machine.config['hardware']['driverboards'].lower())
 
@@ -63,6 +64,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.init_strips()
 
     def stop(self):
+        # TODO: send a stop to arduino
         pass
 
     def init_strips(self):
@@ -76,11 +78,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #    strip_config['invert'], strip_config['brightness'])
 
         self.strip = Adafruit_NeoPixel(64, 18, 800000, 5, False, 255)
-
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
         #self.strips[strip_name] = self.strip
-        #self.strip.updated = False
+        self.strip.updated = False
 
     def fake_keypad(self):
         c = self.fake_keys[self.fake_idx]
@@ -132,9 +133,9 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         del dt
         self.update_kb()
 
-        #if self.strip.updated:
-        #    self.strip.updated = False
-        self.strip.show()
+        if self.strip.updated:
+            self.strip.updated = False
+            self.strip.show()
 
 
     def get_hw_switch_states(self):
@@ -209,8 +210,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         as the *sw_num*.
 
         """
-        self.log.debug("Clearing HW Rule for switch: %s, coils: %s", switch.hw_switch.number,
-                       coil.hw_driver.number)
+        self.log.info("clear_hw_rule(%s %s %s)" %
+                       (switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        #raise NotImplementedError
+        pass
 
     def set_pulse_on_hit_rule(self, enable_switch, coil):
         """Set pulse on hit rule on driver.
@@ -218,6 +221,9 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         Pulses a driver when a switch is hit. When the switch is released the pulse continues. Typically used for
         autofire coils such as pop bumpers.
         """
+        self.log.info("set_pulse_on_hit_rule(%s %s %s)" %
+                       (enable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        #raise NotImplementedError
         pass
 
     def set_pulse_on_hit_and_release_rule(self, enable_switch, coil):
@@ -226,6 +232,9 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         Pulses a driver when a switch is hit. When the switch is released the pulse is canceled. Typically used on
         the main coil for dual coil flippers without eos switch.
         """
+        self.log.info("set_pulse_on_hit_and_release_rule(%s %s %s)" %
+                       (enable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        #raise NotImplementedError
         pass
 
     def set_pulse_on_hit_and_enable_and_release_rule(self, enable_switch, coil):
@@ -234,17 +243,34 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         Pulses a driver when a switch is hit. Then enables the driver (may be with pwm). When the switch is released
         the pulse is canceled and the driver gets disabled. Typically used for single coil flippers.
         """
+        self.log.info("set_pulse_on_hit_and_enable_and_release_rule(%s %s %s)" %
+                       (enable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        #raise NotImplementedError
         pass
 
     def set_pulse_on_hit_and_enable_and_release_and_disable_rule(self, enable_switch, disable_switch, coil):
         """Set pulse on hit and enable and release and disable rule on driver.
 
-        Pulses a driver when a switch is hit. Then enables the driver (may be with pwm). When the switch is released
+    Pulses a driver when a switch is hit. Then enables the driver (may be with pwm). When the switch is released
         the pulse is canceled and the driver gets disabled. When the second disable_switch is hit the pulse is canceled
         and the driver gets disabled. Typically used on the main coil for dual coil flippers with eos switch.
         """
+        self.log.info("set_pulse_on_hit_and_enable_and_release_and_disable_rule(%s %s %s %s)" %
+                       (enable_switch.hw_switch.number, disable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        #raise NotImplementedError
         pass
 
+
+    def _connect_to_hardware(self):
+        """Connect to each port from the config.
+
+        This process will cause the connection threads to figure out which processor they've connected to
+        and to register themselves.
+        """
+        for port in self.config['ports']:
+            self.serial_connections.add(RaspSerialCommunicator(
+                platform=self, port=port,
+                baud=self.config['baud']))
 
 
 class RASPDriver(DriverPlatformInterface):
@@ -257,14 +283,16 @@ class RASPDriver(DriverPlatformInterface):
         #self.machine = platform.machine
         #self.pdbconfig = getattr(platform, "pdbconfig", None)
 
-        self.log.debug("Driver Settings for %s", self.number)
+        self.log.info("Driver Settings for %s", self.number)
 
     def disable(self, coil):
         """Disable the driver."""
+        self.log.info("RASPDriver.Disable(%s %s)" % (coil.config['label'], coil.hw_driver.number))
         pass
 
     def enable(self, coil):
         """Enable this driver, which means it's held "on" indefinitely until it's explicitly disabled."""
+        self.log.info("RASPDriver.Enable(%s %s)" % (coil.config['label'], coil.hw_driver.number))
         pass
 
     def get_board_name(self):
@@ -290,7 +318,10 @@ class RASPDriver(DriverPlatformInterface):
             many drivers aren't activated at once.
 
         """
+        self.log.info("RASPDriver.Pulse(%s %s, %d ms)" %
+                       (coil.config['label'], coil.hw_driver.number, milliseconds))
         return milliseconds
+
 
 class RASPSwitch(SwitchPlatformInterface):
 
@@ -307,7 +338,6 @@ class RASPSwitch(SwitchPlatformInterface):
 
 
 class RASPLed(RGBLEDPlatformInterface):
-
 
     def __init__(self, config, number, strip):
         """Initialise led."""
@@ -330,24 +360,51 @@ class RASPLed(RGBLEDPlatformInterface):
                                        hex(int(color[1]))[2:].zfill(2),
                                        hex(int(color[2]))[2:].zfill(2))
         #self.log.info("color(%s -> %s)" % (self.number, new_color))
-        #if self.current_color != new_color:
-        #    print("color(%s -> %s)" % (self.number, new_color))
-        #    #print(color)
-        try:
-            nb = int(self.number)
-        except:
-            return # no update possible !
-        #self.strip.setPixelColor(self.number, self.current_color)
-        try:
-            #r, g, b = color
-            g, r, b = color
-            c = self.current_color
-            t = Color(r, g, b)
-            #if self.current_color != new_color:
-            #    print("setpixel ", nb, "=", t)
-            self.strip.setPixelColor(nb, t)
-            #self.strip.show()
-        except:
-            pass
+        #print("color(%s -> %s)" % (self.number, new_color))
         self.current_color = new_color
+        self.strip.setPixelColor(self.number, self.current_color)
         self.strip.updated = True
+
+
+
+class RaspSerialCommunicator(BaseSerialCommunicator):
+    """Protocol implementation to the Arduino"""
+
+    def __init__(self, platform, port, baud):
+        """Initialise communicator.
+
+        Args:
+            platform(mpf.platforms.fast.fast.HardwarePlatform): the fast hardware platform
+            port: serial port
+            baud: baud rate
+        """
+        self.received_msg = ''
+        super().__init__(platform, port, baud)
+
+
+
+    def _parse_msg(self, msg):
+        """Parse a message.
+
+        Msg may be partial.
+        Args:
+            msg: Bytes of the message (part) received.
+        """
+        self.received_msg += msg
+
+        while True:
+            pos = self.received_msg.find(b'\r')
+
+            # no more complete messages
+            if pos == -1:
+                break
+
+
+    @asyncio.coroutine
+    def _identify_connection(self):
+        """Initialise and identify connection."""
+        raise NotImplementedError("Implement!")
+
+
+
+

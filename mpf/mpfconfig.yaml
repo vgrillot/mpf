@@ -18,13 +18,15 @@ mpf:
         - show_controller: mpf.core.show_controller.ShowController
         - bcp: mpf.core.bcp.bcp.Bcp
         - logic_blocks: mpf.core.logic_blocks.LogicBlocks
-        - scoring: mpf.core.scoring.ScoreController
         - service: mpf.core.service_controller.ServiceController
         - settings: mpf.core.settings_controller.SettingsController
+        - placeholder_manager: mpf.core.placeholder_manager.PlaceholderManager
 
     config_players:
         coil: mpf.config_players.coil_player
         event: mpf.config_players.event_player
+        queue_event: mpf.config_players.queue_event_player
+        queue_relay: mpf.config_players.queue_relay_player
         flasher: mpf.config_players.flasher_player
         gi: mpf.config_players.gi_player
         led: mpf.config_players.led_player
@@ -32,39 +34,45 @@ mpf:
         random_event: mpf.config_players.random_event_player
         show: mpf.config_players.show_player
         trigger: mpf.config_players.trigger_player
+        score: mpf.config_players.score_player
 
     device_modules:
-        driver.Driver
-        dual_wound_coil.DualWoundCoil
-        switch.Switch
-        matrix_light.MatrixLight
-        led.Led
-        gi.Gi
-        autofire.AutofireCoil
-        ball_device.BallDevice
-        playfield.Playfield
-        drop_target.DropTarget
-        drop_target.DropTargetBank
-        extra_ball.ExtraBall
-        shot.Shot
-        shot_group.ShotGroup
-        flipper.Flipper
-        diverter.Diverter
-        score_reel.ScoreReel
-        score_reel_group.ScoreReelGroup
-        flasher.Flasher
-        playfield_transfer.PlayfieldTransfer
-        ball_lock.BallLock
-        multiball.Multiball
-        motor.Motor
-        ball_save.BallSave
-        accelerometer.Accelerometer
-        servo.Servo
-        achievement.Achievement
-        physical_dmd.PhysicalDmd
-        physical_rgb_dmd.PhysicalRgbDmd
-        led_group.LedStrip
-        led_group.LedRing
+        - mpf.devices.driver.Driver
+        - mpf.devices.dual_wound_coil.DualWoundCoil
+        - mpf.devices.switch.Switch
+        - mpf.devices.matrix_light.MatrixLight
+        - mpf.devices.led.Led
+        - mpf.devices.gi.Gi
+        - mpf.devices.autofire.AutofireCoil
+        - mpf.devices.ball_device.ball_device.BallDevice
+        - mpf.devices.playfield.Playfield
+        - mpf.devices.drop_target.DropTarget
+        - mpf.devices.drop_target.DropTargetBank
+        - mpf.devices.extra_ball.ExtraBall
+        - mpf.devices.shot.Shot
+        - mpf.devices.shot_group.ShotGroup
+        - mpf.devices.flipper.Flipper
+        - mpf.devices.diverter.Diverter
+        - mpf.devices.score_reel.ScoreReel
+        - mpf.devices.score_reel_group.ScoreReelGroup
+        - mpf.devices.flasher.Flasher
+        - mpf.devices.playfield_transfer.PlayfieldTransfer
+        - mpf.devices.ball_lock.BallLock
+        - mpf.devices.multiball.Multiball
+        - mpf.devices.motor.Motor
+        - mpf.devices.ball_save.BallSave
+        - mpf.devices.accelerometer.Accelerometer
+        - mpf.devices.servo.Servo
+        - mpf.devices.achievement.Achievement
+        - mpf.devices.achievement_group.AchievementGroup
+        - mpf.devices.physical_dmd.PhysicalDmd
+        - mpf.devices.physical_rgb_dmd.PhysicalRgbDmd
+        - mpf.devices.led_group.LedStrip
+        - mpf.devices.led_group.LedRing
+        - mpf.devices.magnet.Magnet
+        - mpf.devices.kickback.Kickback
+        - mpf.devices.combo_switch.ComboSwitch
+        - mpf.devices.ball_hold.BallHold
 
     plugins:
         mpf.plugins.auditor.Auditor
@@ -82,7 +90,7 @@ mpf:
         p3_roc:  mpf.platforms.p3_roc.HardwarePlatform
         pololu_maestro: mpf.platforms.pololu_maestro.HardwarePlatform
         smart_virtual: mpf.platforms.smart_virtual.HardwarePlatform
-        smartmatrix: mpf.platforms.smartmatrix.HardwarePlatform
+        smartmatrix: mpf.platforms.smartmatrix.SmartMatrix
         snux: mpf.platforms.snux.HardwarePlatform
         virtual: mpf.platforms.virtual.HardwarePlatform
         rasppinball: mpf.platforms.rasppinball.rasppinball.HardwarePlatform
@@ -106,11 +114,11 @@ mpf:
     switch_tag_event: sw_%
     allow_invalid_config_sections: false
     save_machine_vars_to_disk: true
-    hz: auto
     default_led_hw_update_hz: 50
     default_matrix_light_hw_update_hz: 50
     default_platform_hz: 1000
     default_ball_search: False
+    default_show_sync_ms: 0
 
 
     device_collection_control_events:
@@ -137,6 +145,7 @@ mpf:
       - autofire_coils
       - ball_devices
       - ball_saves
+      - ball_holds
       - ball_locks
       - coils
       - diverters
@@ -159,6 +168,8 @@ mpf:
       - switches
       - timers
       - achievements
+      - achievement_groups
+      - combo_switches
 
 # Default settings for machines. All can be overridden
 
@@ -248,6 +259,8 @@ bcp:
             host: localhost
             port: 5050
             type: mpf.core.bcp.bcp_socket_client.BCPClientSocket
+            required: True
+            exit_on_close: True
 
     servers:
         url_style:
@@ -291,9 +304,9 @@ shows:
               brightness: ff
           leds:
             (led):
-              color: white
+              color: on
             (leds):
-              color: white
+              color: on
         - time: 1
           lights:
             (light):
@@ -316,9 +329,9 @@ shows:
               brightness: ff
           leds:
             (led):
-              color: white
+              color: on
             (leds):
-              color: white
+              color: on
     off:
         - time: 0
           duration: -1
@@ -367,3 +380,9 @@ hardware:
   accelerometers: default
   servo_controllers: default
   i2c: default
+
+combo_switches:
+  both_flippers:
+    tag_1: left_flipper
+    tag_2: right_flipper
+    events_when_both: flipper_cancel

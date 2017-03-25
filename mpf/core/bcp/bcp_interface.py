@@ -52,6 +52,7 @@ class BcpInterface(object):
             switch=self.bcp_receive_switch,
             trigger=self.bcp_receive_trigger,
             register_trigger=self.bcp_receive_register_trigger,
+            set_machine_var=self._set_machine_var,
             monitor_events=self._monitor_events,
             monitor_machine_vars=self._monitor_machine_vars,
             monitor_player_vars=self._monitor_player_vars,
@@ -99,6 +100,11 @@ class BcpInterface(object):
         # if not transports remain. remove handler
         if not self.machine.bcp.transport.get_transports_for_handler(event):
             self.machine.events.remove_handler_by_event(event=event, handler=self.bcp_trigger)
+
+    def _set_machine_var(self, client, name, value):
+        """Set machine var via bcp."""
+        del client
+        self.machine.create_machine_var(name, value)
 
     def _monitor_events(self, client):
         """Monitor all events."""
@@ -160,6 +166,8 @@ class BcpInterface(object):
         self.machine.bcp.transport.add_handler_to_transport("_machine_vars", client)
 
     def _send_machine_vars(self, client):
+        self.machine.bcp.transport.send_to_client(client, bcp_command='settings',
+                                                  settings=self.machine.settings.get_settings())
         for var_name, settings in self.machine.machine_vars.items():
             self.machine.bcp.transport.send_to_client(client, bcp_command='machine_variable',
                                                       name=var_name,

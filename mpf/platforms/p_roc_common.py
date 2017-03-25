@@ -59,6 +59,8 @@ class PROCBasePlatform(MatrixLightsPlatform, GiPlatform, LedPlatform, SwitchPlat
         self.proc = None
         self.log = None
         self.hw_switch_rules = {}
+        self.version = None
+        self.revision = None
 
         self.machine_type = pinproc.normalize_machine_type(
             self.machine.config['hardware']['driverboards'])
@@ -86,7 +88,25 @@ class PROCBasePlatform(MatrixLightsPlatform, GiPlatform, LedPlatform, SwitchPlat
                 print("Retrying...")
                 time.sleep(1)
 
-        self.log.info("Successfully connected to P-ROC/P3-ROC")
+        version_revision = self.proc.read_data(0x00, 0x01)
+
+        self.revision = version_revision & 0xFFFF
+        self.version = (version_revision & 0xFFFF0000) >> 16
+        self.machine.create_machine_var("p_roc_version", self.version, persist=False, silent=True)
+        '''machine_var: p_roc_version
+
+        desc: Holds the version number of the P-ROC or P3-ROC controller that's
+        attached to MPF.
+        '''
+
+        self.machine.create_machine_var("p_roc_revision", self.revision, persist=False, silent=True)
+        '''machine_var: p_roc_revision
+
+        desc: Holds the revision number of the P-ROC or P3-ROC controller
+        that's attached to MPF.
+        '''
+
+        self.log.info("Successfully connected to P-ROC/P3-ROC. Revision: %s. Version: %s", self.revision, self.version)
 
     @classmethod
     def _get_event_type(cls, sw_activity, debounced):
