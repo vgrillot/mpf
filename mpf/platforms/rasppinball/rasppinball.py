@@ -41,6 +41,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.leds = dict()
         #self.serial_connections = dict()
         self.communicator = None
+        #self._connect_to_hardware()
 
     def __repr__(self):
         """Return string representation."""
@@ -261,15 +262,19 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         This process will cause the connection threads to figure out which processor they've connected to
         and to register themselves.
         """
-        if len(self.config['ports']) > 1:
-            self.log.fatal("only one slave com port is supported")
-        if len(self.config['ports']) == 0:
-            self.log.warning("no communication port setted!")
-            return
-        port = self.config['ports'][0]
+        if False:  # !!!TEMP:need to validate config...
+            if len(self.config['ports']) > 1:
+                self.log.fatal("only one slave com port is supported")
+            if len(self.config['ports']) == 0:
+                self.log.warning("no communication port setted!")
+                return
+            port = self.config['ports'][0]
+            self.communicator = RaspSerialCommunicator(
+                platform=self, port=port,
+                baud=self.config['baud'])
         self.communicator = RaspSerialCommunicator(
-            platform=self, port=port,
-            baud=self.config['baud'])
+            platform=self, port='/dev/ttyAMA0',
+            baud=9600)
 
     def process_received_message(self, msg: str):
         """Send an incoming message from the FAST controller to the proper method for servicing.
