@@ -1,6 +1,8 @@
 """raspPinball hardware plateform"""
 
 import logging
+import asyncio
+
 from mpf.platforms.rasppinball.keypad import Keypad
 
 from mpf.devices.driver import ConfiguredHwDriver
@@ -41,7 +43,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.leds = dict()
         #self.serial_connections = dict()
         self.communicator = None
-        #self._connect_to_hardware()
 
     def __repr__(self):
         """Return string representation."""
@@ -53,8 +54,13 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         self.config = self.machine.config['rasppinball']
         self.machine.config_validator.validate_config("rasppinball", self.config)
+        print("***************************")
+        print(self.config)
         #self.machine_type = (
         #    self.machine.config['hardware']['driverboards'].lower())
+
+        self._connect_to_hardware()
+
 
         #  keypad
         self._kp = Keypad()
@@ -297,10 +303,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             self.log.warning("RECV:%s" % msg)
         elif cmd == "ERR":  # warning message
             self.log.error("RECV:%s" % msg)
+        elif cmd == "TCK": # arduino is alive !
+            self.log.debug("TCK ok:%d" % int(params[0]))
         else:
-            self.log.warning("Received unknown serial command? %s. (This is ok"
-                             " to ignore for now while the FAST platform is in "
-                             "development)", msg)
+            self.log.warning("RECV:UNKNOWN FRAME:", msg)
 
 
 
@@ -423,19 +429,24 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         Args:
             msg: Bytes of the message (part) received.
         """
-        self.received_msg += msg
+        self.received_msg += msg.decode()
+        #self.log.debug(self.received_msg)
 
         while True:
-            pos = self.received_msg.find(b'\r')
+            pos = self.received_msg.find('\r')
             if pos == -1: # no full msg
                 break
-            self.platform.process_received_message(self.received_msg[:pos].decode())
+            m = self.received_msg[:pos].strip()
+            if not len(m):
+                break
+            self.platform.process_received_message(m)
             self.received_msg = self.received_msg[pos + 1:]
 
-    #@asyncio.coroutine
+    @asyncio.coroutine
     def _identify_connection(self):
         """Initialise and identify connection."""
-        raise NotImplementedError("Implement!")
+        pass #nothing to identify...
+        #raise NotImplementedError("Implement!")
 
     def rule_clear(self, coil_pin, enable_sw_id):
         msg = "RUL:CLR:%d:%d\n" % (coil_pin, enable_sw_id)
