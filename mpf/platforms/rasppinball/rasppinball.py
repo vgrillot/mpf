@@ -420,7 +420,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
             self.platform.process_received_message(self.received_msg[:pos].decode())
             self.received_msg = self.received_msg[pos + 1:]
 
-    @asyncio.coroutine
+    #@asyncio.coroutine
     def _identify_connection(self):
         """Initialise and identify connection."""
         raise NotImplementedError("Implement!")
