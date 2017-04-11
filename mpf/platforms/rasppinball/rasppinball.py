@@ -1,6 +1,8 @@
 """raspPinball hardware plateform"""
 
 import logging
+import asyncio
+
 from mpf.platforms.rasppinball.keypad import Keypad
 
 from mpf.devices.driver import ConfiguredHwDriver
@@ -10,8 +12,8 @@ from mpf.platforms.interfaces.driver_platform_interface import DriverPlatformInt
 from mpf.platforms.interfaces.rgb_led_platform_interface import RGBLEDPlatformInterface
 from mpf.platforms.base_serial_communicator import BaseSerialCommunicator
 
-#from neopixel import *
-from neopixel import neopixel
+from neopixel import * # ok sur raspberry
+#from neopixel import neopixel #don't find it on raspberry
 
 
 #class HardwarePlatform(MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform):
@@ -52,8 +54,13 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         self.config = self.machine.config['rasppinball']
         self.machine.config_validator.validate_config("rasppinball", self.config)
+        print("***************************")
+        print(self.config)
         #self.machine_type = (
         #    self.machine.config['hardware']['driverboards'].lower())
+
+        self._connect_to_hardware()
+
 
         #  keypad
         self._kp = Keypad()
@@ -71,10 +78,12 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #!!161126:VG:init_strips
         # read only one for now...
         #self.machine.config_validator.validate_config("rasp_strip_leds", rasp_strip_leds)
-        strip_config = self.config
-        self.strip = neopixel.Adafruit_NeoPixel(
-            strip_config['count'], strip_config['pin'], strip_config['freq'], strip_config['dma'],
-            strip_config['invert'], strip_config['brightness'])
+        #strip_config = self.config
+        #self.strip = neopixel.Adafruit_NeoPixel(
+        #    strip_config['count'], strip_config['pin'], strip_config['freq'], strip_config['dma'],
+        #    strip_config['invert'], strip_config['brightness'])
+
+        self.strip = Adafruit_NeoPixel(64, 18, 800000, 5, False, 255)
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
         #self.strips[strip_name] = self.strip
@@ -259,15 +268,19 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         This process will cause the connection threads to figure out which processor they've connected to
         and to register themselves.
         """
-        if len(self.config['ports']) > 1:
-            self.log.fatal("only one slave com port is supported")
-        if len(self.config['ports']) == 0:
-            self.log.warning("no communication port setted!")
-            return
-        port = self.config['ports'][0]
+        if False:  # !!!TEMP:need to validate config...
+            if len(self.config['ports']) > 1:
+                self.log.fatal("only one slave com port is supported")
+            if len(self.config['ports']) == 0:
+                self.log.warning("no communication port setted!")
+                return
+            port = self.config['ports'][0]
+            self.communicator = RaspSerialCommunicator(
+                platform=self, port=port,
+                baud=self.config['baud'])
         self.communicator = RaspSerialCommunicator(
-            platform=self, port=port,
-            baud=self.config['baud'])
+            platform=self, port='/dev/ttyAMA0',
+            baud=9600)
 
     def process_received_message(self, msg: str):
         """Send an incoming message from the FAST controller to the proper method for servicing.
@@ -290,10 +303,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             self.log.warning("RECV:%s" % msg)
         elif cmd == "ERR":  # warning message
             self.log.error("RECV:%s" % msg)
+        elif cmd == "TCK": # arduino is alive !
+            self.log.debug("TCK ok:%d" % int(params[0]))
         else:
-            self.log.warning("Received unknown serial command? %s. (This is ok"
-                             " to ignore for now while the FAST platform is in "
-                             "development)", msg)
+            self.log.warning("RECV:UNKNOWN FRAME:", msg)
 
 
 
@@ -380,11 +393,16 @@ class RASPLed(RGBLEDPlatformInterface):
         new_color = "{0}{1}{2}".format(hex(int(color[0]))[2:].zfill(2),
                                        hex(int(color[1]))[2:].zfill(2),
                                        hex(int(color[2]))[2:].zfill(2))
-        #self.log.info("color(%s -> %s)" % (self.number, new_color))
+        #self.log.info("color(%s : %s -> %s)" % (self.number, color, new_color))
         #print("color(%s -> %s)" % (self.number, new_color))
-        self.current_color = new_color
-        self.strip.setPixelColor(self.number, self.current_color)
-        self.strip.updated = True
+        try:
+            self.current_color = new_color
+            #self.strip.setPixelColor(int(self.number), self.current_color)
+            self.strip.setPixelColorRGB(int(self.number), color[0], color[1], color[2])
+
+            self.strip.updated = True
+        except Exception as e:
+            self.log.error("led update error" + str(e))
 
 
 
@@ -411,19 +429,24 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         Args:
             msg: Bytes of the message (part) received.
         """
-        self.received_msg += msg
+        self.received_msg += msg.decode()
+        #self.log.debug(self.received_msg)
 
         while True:
-            pos = self.received_msg.find(b'\r')
+            pos = self.received_msg.find('\r')
             if pos == -1: # no full msg
                 break
-            self.platform.process_received_message(self.received_msg[:pos].decode())
+            m = self.received_msg[:pos].strip()
+            if not len(m):
+                break
+            self.platform.process_received_message(m)
             self.received_msg = self.received_msg[pos + 1:]
 
     #@asyncio.coroutine
     def _identify_connection(self):
         """Initialise and identify connection."""
-        raise NotImplementedError("Implement!")
+        pass #nothing to identify...
+        #raise NotImplementedError("Implement!")
 
     def rule_clear(self, coil_pin, enable_sw_id):
         msg = "RUL:CLR:%d:%d\n" % (coil_pin, enable_sw_id)
