@@ -7,6 +7,8 @@ import os
 import socket
 import sys
 from datetime import datetime
+from logging.handlers import QueueHandler
+from queue import Queue
 
 from mpf.core.machine import MachineController
 from mpf.core.utility_functions import Util
@@ -64,8 +66,8 @@ class Command(object):
                             action="store", dest="logfile",
                             metavar='file_name',
                             default=os.path.join("logs",
-                                datetime.now().strftime(
-                                "%Y-%m-%d-%H-%M-%S-mpf-" + socket.gethostname() + ".log")),
+                                                 datetime.now().strftime(
+                                                     "%Y-%m-%d-%H-%M-%S-mpf-" + socket.gethostname() + ".log")),
                             help="The name (and path) of the log file")
 
         parser.add_argument("-p",
@@ -76,8 +78,8 @@ class Command(object):
 
         parser.add_argument("-v",
                             action="store_const", dest="loglevel",
-                            const=logging.DEBUG,
-                            default=logging.INFO,
+                            const=10,
+                            default=11,
                             help="Enables verbose logging to the"
                                  " log file")
 
@@ -102,6 +104,14 @@ class Command(object):
                                  "used for all"
                                  " devices")
 
+        # The following are just included for full compatibility with mc
+        # which is needed when using "mpf both".
+
+        parser.add_argument("-L",
+                            action="store", dest="mc_file_name",
+                            metavar='mc_file_name',
+                            default=None, help=argparse.SUPPRESS)
+
         args = parser.parse_args(args)
         args.configfile = Util.string_to_list(args.configfile)
 
@@ -115,25 +125,41 @@ class Command(object):
             if exception.errno != errno.EEXIST:
                 raise
 
-        logging.basicConfig(level=args.loglevel,
-                            format='%(asctime)s : %(levelname)s : %(name)s : '
-                                   '%(message)s',
-                            filename=os.path.join(machine_path, args.logfile),
-                            filemode='w')
+        full_logfile_path = os.path.join(machine_path, args.logfile)
 
-        # define a Handler which writes INFO messages or higher to the
-        # sys.stderr
-        console = logging.StreamHandler()
-        console.setLevel(args.consoleloglevel)
+        try:
+            os.remove(full_logfile_path)
+        except OSError:
+            pass
 
-        # set a format which is simpler for console use
-        formatter = logging.Formatter('%(levelname)s : %(name)s : %(message)s')
+        # define a Handler which writes INFO messages or higher to the sys.stderr
+        console_log = logging.StreamHandler()
+        console_log.setLevel(args.consoleloglevel)
 
         # tell the handler to use this format
-        console.setFormatter(formatter)
+        console_log.setFormatter(logging.Formatter('%(name)s : %(message)s'))
 
-        # add the handler to the root logger
-        logging.getLogger('').addHandler(console)
+        # initialise async handler for console
+        console_log_queue = Queue()
+        console_queue_handler = QueueHandler(console_log_queue)
+        console_queue_listener = logging.handlers.QueueListener(console_log_queue, console_log)
+        console_queue_listener.start()
+
+        # initialise file log
+        file_log = logging.FileHandler(full_logfile_path)
+        file_log.setFormatter(logging.Formatter('%(asctime)s : %(name)s : %(message)s'))
+
+        # initialise async handler for file log
+        file_log_queue = Queue()
+        file_queue_handler = QueueHandler(file_log_queue)
+        file_queue_listener = logging.handlers.QueueListener(file_log_queue, file_log)
+        file_queue_listener.start()
+
+        # add loggers
+        logger = logging.getLogger()
+        logger.addHandler(console_queue_handler)
+        logger.addHandler(file_queue_handler)
+        logger.setLevel(args.loglevel)
 
         try:
             MachineController(mpf_path, machine_path, vars(args)).run()
@@ -141,6 +167,11 @@ class Command(object):
         # pylint: disable-msg=broad-except
         except Exception as e:
             logging.exception(e)
+
+        logging.shutdown()
+        # stop threads
+        console_queue_listener.stop()
+        file_queue_listener.stop()
 
         if args.pause:
             input('Press ENTER to continue...')

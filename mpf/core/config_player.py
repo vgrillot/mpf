@@ -1,3 +1,4 @@
+
 """Base class used for things that "play" from the config files, such as WidgetPlayer, SlidePlayer, etc."""
 import abc
 
@@ -26,6 +27,7 @@ class ConfigPlayer(object, metaclass=abc.ABCMeta):
         self.instances = dict()
         self.instances['_global'] = dict()
         self.instances['_global'][self.config_file_section] = dict()
+        self._show_keys = {}
 
     def _add_handlers(self):
         self.machine.events.add_handler('init_phase_1', self._initialize_in_mode)
@@ -195,7 +197,11 @@ class ConfigPlayer(object, metaclass=abc.ABCMeta):
 
     @staticmethod
     def _parse_event_priority(event, priority):
-        if 0 < event.find(".") and (event.find("{") < 0 or event.find(".") < event.find("{")):
+
+        # todo should we move this to EventManager so we can use the dot
+        # priority shift notation for all event handlers?
+
+        if event.find(".") > 0 and (event.find("{") < 0 or event.find(".") < event.find("{")):
             new_event = event[:event.find(".")]
             if event.find("{") > 0:
                 priority += int(event[event.find(".") + 1:event.find("{")])
@@ -213,6 +219,22 @@ class ConfigPlayer(object, metaclass=abc.ABCMeta):
         if config:
             for event, settings in config.items():
                 event, priority = self._parse_event_priority(event, priority)
+
+                if mode and event in mode.config['mode']['start_events']:
+                    self.machine.log.error(
+                        "{0} mode's {1}: section contains a \"{2}:\" event "
+                        "which is also in the start_events: for the {0} mode. "
+                        "Change the {1}: {2}: event name to "
+                        "\"mode_{0}_started:\"".format(
+                            mode.name, self.config_file_section, event))
+
+                    raise ValueError(
+                        "{0} mode's {1}: section contains a \"{2}:\" event "
+                        "which is also in the start_events: for the {0} mode. "
+                        "Change the {1}: {2}: event name to "
+                        "\"mode_{0}_started:\"".format(
+                            mode.name, self.config_file_section, event))
+
                 key_list.append(
                     self.machine.events.add_handler(
                         event=event,
@@ -257,11 +279,19 @@ class ConfigPlayer(object, metaclass=abc.ABCMeta):
         if self.config_file_section not in self.instances[context]:
             self.instances[context][self.config_file_section] = dict()
 
+        # register bcp events
+        config = {'bcp_connection': settings['bcp_connection']} if 'bcp_connection' in settings else {}
+        event_keys = self.register_player_events(config, None, priority)
+        self._show_keys[context + self.config_file_section] = event_keys
+
         self.play(settings=settings, priority=priority, calling_context=calling_context,
                   show_tokens=show_tokens, context=context)
 
     def show_stop_callback(self, context):
         """Callback if show stops."""
+        self.unload_player_events(self._show_keys[context + self.config_file_section])
+        del self._show_keys[context + self.config_file_section]
+
         self.clear_context(context)
 
     @abc.abstractmethod

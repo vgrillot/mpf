@@ -54,7 +54,7 @@ class BaseSmartVirtualCoilAction:
 
 class ResetDropTargetAction(BaseSmartVirtualCoilAction):
 
-    """Disable switches when coil is pulsed."""
+    """Set switches inactive when coil is pulsed."""
 
     def __init__(self, actions, machine, drop_target_bank):
         """Initialise switch enable action."""
@@ -62,8 +62,13 @@ class ResetDropTargetAction(BaseSmartVirtualCoilAction):
         self.drop_target_bank = drop_target_bank
 
     def _hit_switches(self):
-        for target in self.drop_target_bank.drop_targets:
-            self.machine.switch_controller.process_switch(target.config['switch'].name, 0)
+        # need to pull the drop targets from the config, not the drop_targets
+        # attribute, because if the bank is defined in a mode then the
+        # attr won't be populated yet, but if there's a bank in a mode with a
+        # single reset coil we assume that coil will reset all the drop targets
+        # anytime it's called.
+        for target in self.drop_target_bank.config['drop_targets']:
+            self.machine.switch_controller.process_switch(target.config['switch'].name, 0, logical=True)
 
     def _perform_action(self):
         self.delay.add(ms=50, callback=self._hit_switches)
@@ -80,7 +85,7 @@ class SwitchDisableAction(BaseSmartVirtualCoilAction):
 
     def _hit_switches(self):
         for switch in self.switches:
-            self.machine.switch_controller.process_switch(switch.name, 0)
+            self.machine.switch_controller.process_switch(switch.name, 0, logical=True)
 
     def _perform_action(self):
         self.delay.add(ms=50, callback=self._hit_switches)
@@ -92,13 +97,14 @@ class SwitchEnableAction(SwitchDisableAction):
 
     def _hit_switches(self):
         for switch in self.switches:
-            self.machine.switch_controller.process_switch(switch.name, 1)
+            self.machine.switch_controller.process_switch(switch.name, 1, logical=True)
 
 
 class ScoreReelAdvanceAction(BaseSmartVirtualCoilAction):
 
     """Virtual score reel."""
 
+    # pylint: disable-msg=too-many-arguments
     def __init__(self, actions, machine, switch_map, limit_lo, limit_hi, name):
         """Initialise virtual score reel."""
         super().__init__(actions, machine)
@@ -127,7 +133,8 @@ class ScoreReelAdvanceAction(BaseSmartVirtualCoilAction):
         for position, switch in self.switch_map.items():
             if not switch:
                 continue
-            self.machine.switch_controller.process_switch(switch.name, 1 if self.position == position else 0)
+            self.machine.switch_controller.process_switch(switch.name, 1 if self.position == position else 0,
+                                                          logical=True)
 
 
 class AddBallToTargetAction(BaseSmartVirtualCoilAction):
@@ -146,8 +153,11 @@ class AddBallToTargetAction(BaseSmartVirtualCoilAction):
 
     def confirm_eject_via_switch(self, switch):
         """Simulate eject via switch."""
-        self.machine.switch_controller.process_switch(switch.name, 1)
-        self.machine.switch_controller.process_switch(switch.name, 0)
+        self.machine.switch_controller.process_switch(switch.name, 1, logical=True)
+        self.delay.add(ms=10, callback=self._release_confirm_switch, switch=switch)
+
+    def _release_confirm_switch(self, switch):
+        self.machine.switch_controller.process_switch(switch.name, 0, logical=True)
 
     def set_target(self, source, target, mechanical_eject, **kwargs):
         """Set target for action."""
@@ -161,7 +171,7 @@ class AddBallToTargetAction(BaseSmartVirtualCoilAction):
         if driver and driver.action:
             driver.action.target_device = target
 
-        if mechanical_eject and self.machine.config['smart_virtual']['simulate_manual_plunger']:
+        if "delay" in self.actions and self.machine.config['smart_virtual']['simulate_manual_plunger']:
             # simulate mechanical eject
             self.delay.add(ms=self.machine.config['smart_virtual']['simulate_manual_plunger_timeout'],
                            callback=self._perform_action)
@@ -184,7 +194,7 @@ class AddBallToTargetAction(BaseSmartVirtualCoilAction):
                 self.device.config['entrance_switch'].name)):
 
             self.machine.switch_controller.process_switch(
-                self.device.config['entrance_switch'].name, 0, True)
+                self.device.config['entrance_switch'].name, 0, logical=True)
             self.log.debug("Deactivating: %s", self.device.config['entrance_switch'].name)
 
         if self.confirm_eject_switch:
@@ -218,7 +228,7 @@ class HardwarePlatform(VirtualPlatform):
 
     def initialize(self):
         """Initialise platform."""
-        self.machine.events.add_handler('machine_reset_phase_1',
+        self.machine.events.add_handler('init_phase_5',
                                         self._initialize2)
 
     def _initialize2(self, **kwargs):
@@ -285,9 +295,12 @@ class HardwarePlatform(VirtualPlatform):
             elif device.config['hold_coil']:
                 action = device.config['hold_coil'].hw_driver.action = AddBallToTargetAction(
                     ["disable"], self.machine, self, device)
+            elif device.config['mechanical_eject']:
+                action = AddBallToTargetAction(["delay"], self.machine, self, device)
+
             if action:
                 # we assume that the device always reaches its target. diverters are ignored
-                self.machine.events.add_handler('balldevice_{}_ball_eject_attempt'.format(device.name),
+                self.machine.events.add_handler('balldevice_{}_ejecting_ball'.format(device.name),
                                                 action.set_target)
 
     def configure_driver(self, config):
@@ -303,7 +316,7 @@ class HardwarePlatform(VirtualPlatform):
 
     def add_ball_to_device(self, device):
         """Add ball to device."""
-        if device.balls + 1 > device.config['ball_capacity']:
+        if device.balls >= device.config['ball_capacity']:
             raise AssertionError("KABOOM! We just added a ball to {} which has a capacity "
                                  "of {} but already had {} ball(s)".format(device.name,
                                                                            device.config['ball_capacity'],
@@ -339,7 +352,7 @@ class HardwarePlatform(VirtualPlatform):
             for switch in device.config['ball_switches']:
                 if self.machine.switch_controller.is_inactive(switch.name):
                     self.machine.switch_controller.process_switch(
-                        switch.name, 1, True)
+                        switch.name, 1, logical=True)
                     found_switch = True
                     break
 

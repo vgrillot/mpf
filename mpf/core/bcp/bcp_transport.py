@@ -21,6 +21,9 @@ class BcpTransportManager:
         if handler not in self._handlers:
             self._handlers[handler] = []
 
+        if transport is None:
+            raise AssertionError("Cannot register None transport.")
+
         self._handlers[handler].append(transport)
 
     def remove_transport_from_handle(self, handler, transport: BaseBcpClient):
@@ -76,6 +79,10 @@ class BcpTransportManager:
 
         if transport.exit_on_close:
             self._machine.stop()
+
+    def get_all_clients(self):
+        """Get a list of all clients."""
+        return self._transports
 
     def get_named_client(self, client_name) -> BaseBcpClient:
         """Get a client by name."""

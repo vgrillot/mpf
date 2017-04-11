@@ -18,6 +18,9 @@ class TestServiceMode(MpfFakeGameTestCase):
         self.mock_event("service_mode_entered")
         self.mock_event("service_mode_exited")
 
+        self.hit_and_release_switch("s_service_esc")
+        self.advance_time_and_run()
+        self.assertMachineVarEqual(1, "credit_units")
         self.assertModeRunning("attract")
 
         # open door
@@ -57,10 +60,18 @@ class TestServiceMode(MpfFakeGameTestCase):
 
         # exit service
         self.hit_and_release_switch("s_service_esc")
+        self.advance_time_and_run()
         self.assertEventCalled('service_mode_exited', 2)
         self.assertEventCalled('service_door_closed', 1)
         self.assertModeRunning("attract")
         self.assertModeRunning("service")
+        self.assertModeRunning("credits")
+
+        self.assertMachineVarEqual(1, "credit_units")
+
+        self.hit_and_release_switch("s_service_esc")
+        self.advance_time_and_run()
+        self.assertMachineVarEqual(2, "credit_units")
 
     def test_start_stop_service_in_game(self):
         self.assertModeRunning("service")
@@ -68,6 +79,10 @@ class TestServiceMode(MpfFakeGameTestCase):
         self.mock_event("service_door_closed")
         self.mock_event("service_mode_entered")
         self.mock_event("service_mode_exited")
+
+        # add credit
+        self.hit_and_release_switch("s_service_esc")
+        self.advance_time_and_run()
 
         self.start_game()
         self.assertModeRunning("game")
@@ -95,6 +110,7 @@ class TestServiceMode(MpfFakeGameTestCase):
 
         # exit service mode
         self.hit_and_release_switch("s_service_esc")
+        self.advance_time_and_run()
         self.assertModeRunning("attract")
         self.assertEventCalled('service_mode_exited')
 

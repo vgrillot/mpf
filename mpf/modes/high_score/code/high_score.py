@@ -29,6 +29,11 @@ class HighScore(AsyncMode):
             source=self._get_merged_settings('high_score'),
             section_name='high_score')
 
+        # Load defaults if no high_scores are stored
+        if not self.high_scores:
+            self.high_scores = {k: [(next(iter(a.keys())), next(iter(a.values()))) for a in v] for (k, v) in
+                                self.config['high_score']['defaults'].items()}
+
         self._create_machine_vars()
         self.pending_award = None
 
@@ -135,8 +140,8 @@ class HighScore(AsyncMode):
     # pylint: disable-msg=too-many-arguments
     def _ask_player_for_initials(self, player, config_cat_name, index, award_label, value):
 
-        self.log.debug("New high score. Player: %s, award_label: %s"
-                       ", Value: %s", player, award_label, value)
+        self.info_log("New high score. Player: %s, award_label: %s"
+                      ", Value: %s", player, award_label, value)
 
         self.machine.events.post('high_score_enter_initials',
                                  award=award_label,

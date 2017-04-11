@@ -40,6 +40,7 @@ class TestMachineController(MachineController):
         self._test_clock = clock
         self._mock_data = mock_data
         super().__init__(mpf_path, machine_path, options)
+        self.test_init_complete = True
 
     def create_data_manager(self, config_name):
         return TestDataManager(self._mock_data.get(config_name, {}))
@@ -55,10 +56,6 @@ class TestMachineController(MachineController):
         for socket, callback in self.clock.read_sockets.items():
             if socket.ready():
                 callback()
-
-    def _reset_complete(self):
-        self.test_init_complete = True
-        super()._reset_complete()
 
     def _register_plugin_config_players(self):
         if self._enable_plugins:
@@ -266,9 +263,13 @@ class MpfTestCase(unittest.TestCase):
                 self.machine.stop()
             except AttributeError:
                 pass
+            if self._exception and 'exception' in self._exception:
+                raise self._exception['exception']
+            elif self._exception:
+                raise Exception(self._exception, e)
             raise e
 
-        self.assertFalse(self.machine._done, "Machine crashed during start")
+        self.assertTrue(self.machine.test_init_complete, "Machine crashed during start")
 
     def _mock_event_handler(self, event_name, **kwargs):
         self._last_event_kwargs[event_name] = kwargs
@@ -286,6 +287,10 @@ class MpfTestCase(unittest.TestCase):
 
     def assertAvailableBallsOnPlayfield(self, balls, playfield="playfield"):
         self.assertEqual(balls, self.machine.playfields[playfield].available_balls)
+
+    def assertMachineVarEqual(self, value, machine_var):
+        self.assertTrue(self.machine.is_machine_var(machine_var), "Machine Var {} does not exist.".format(machine_var))
+        self.assertEqual(value, self.machine.get_machine_var(machine_var))
 
     def assertPlayerVarEqual(self, value, player_var):
         self.assertIsNotNone(self.machine.game, "There is no game.")
@@ -319,6 +324,25 @@ class MpfTestCase(unittest.TestCase):
 
         for color in color_list:
             self.assertIn(RGBColor(color), colors)
+
+    def assertLightOn(self, light_name):
+        self.assertEqual(255,
+                         self.machine.lights[
+                             light_name].hw_driver.current_brightness)
+
+    def assertLightOff(self, light_name):
+        self.assertEqual(0, self.machine.lights[light_name].hw_driver.current_brightness)
+
+    def assertLightFlashing(self, light_name, secs=1, check_delta=.1):
+        brightness_values = list()
+
+        for _ in range(int(secs / check_delta)):
+            brightness_values.append(
+                self.machine.lights[light_name].hw_driver.current_brightness)
+            self.advance_time_and_run(check_delta)
+
+        self.assertIn(0, brightness_values)
+        self.assertIn(255, brightness_values)
 
     def assertModeRunning(self, mode_name):
         if mode_name not in self.machine.modes:

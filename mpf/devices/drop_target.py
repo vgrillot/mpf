@@ -29,6 +29,8 @@ class DropTarget(SystemWideDevice):
         self.complete = False
         self.delay = DelayManager(machine.delayRegistry)
 
+        self._ignore_switch_hits = False
+
     def _initialize(self):
         self.reset_coil = self.config['reset_coil']
         self.knockdown_coil = self.config['knockdown_coil']
@@ -40,8 +42,18 @@ class DropTarget(SystemWideDevice):
         self.machine.events.add_handler('init_phase_4',
                                         self._register_switch_handlers)
 
-        self.config['playfield'].ball_search.register(
-            self.config['ball_search_order'], self._ball_search)
+        if self.config['ball_search_order']:
+            self.config['playfield'].ball_search.register(
+                self.config['ball_search_order'], self._ball_search, self.name)
+
+    def _ignore_switch_hits_for(self, ms):
+        """Ignore switch hits for ms."""
+        self._ignore_switch_hits = True
+        self.delay.reset(name="ignore_switch", callback=self._restore_switch_hits, ms=ms)
+
+    def _restore_switch_hits(self):
+        self._ignore_switch_hits = False
+        self._update_state_from_switch(reconcile=True)
 
     def _ball_search_phase1(self):
         if not self.complete and self.reset_coil:
@@ -137,25 +149,34 @@ class DropTarget(SystemWideDevice):
         if self.reset_coil:
             self.reset_coil.disable()
 
-
     def knockdown(self, **kwargs):
         """Pulse the knockdown coil to knock down this drop target."""
         del kwargs
         if self.knockdown_coil and not self.machine.switch_controller.is_active(self.config['switch'].name):
+            self._ignore_switch_hits_for(ms=self.config['ignore_switch_ms'])
             self.knockdown_coil.pulse()
 
-    def _update_state_from_switch(self, **kwargs):
+    def _update_state_from_switch(self, reconcile=False, **kwargs):
         del kwargs
-        if self._in_ball_search:
+
+        is_complete = self.machine.switch_controller.is_active(
+            self.config['switch'].name)
+
+        if (self._in_ball_search or self._ignore_switch_hits or
+                is_complete == self.complete):
             return
 
-        if self.machine.switch_controller.is_active(
-                self.config['switch'].name):
-            self._down()
-        else:
-            self._up()
+        if not reconcile:
+            self.config['playfield'].mark_playfield_active_from_device_action()
 
-        self._update_banks()
+        if is_complete != self.complete:
+
+            if is_complete:
+                self._down()
+            else:
+                self._up()
+
+            self._update_banks()
 
     def _down(self):
         self.complete = True
@@ -207,9 +228,11 @@ class DropTarget(SystemWideDevice):
         del kwargs
 
         if self.reset_coil and self.machine.switch_controller.is_active(self.config['switch'].name):
+            self._ignore_switch_hits_for(ms=self.config['ignore_switch_ms'])
             self.reset_coil.pulse()
 
 
+@DeviceMonitor("complete", "down", "up")
 class DropTargetBank(SystemWideDevice, ModeDevice):
 
     """A bank of drop targets in a pinball machine by grouping together multiple `DropTarget` class devices."""
@@ -229,6 +252,7 @@ class DropTargetBank(SystemWideDevice, ModeDevice):
         self.down = 0
         self.up = 0
         self.delay = DelayManager(machine.delayRegistry)
+        self._ignore_switch_hits = False
 
     @property
     def can_exist_outside_of_game(self):
@@ -245,8 +269,7 @@ class DropTargetBank(SystemWideDevice, ModeDevice):
 
         self.member_target_change()
 
-        if self.debug:
-            self.log.debug('Drop Targets: %s', self.drop_targets)
+        self.debug_log('Drop Targets: %s', self.drop_targets)
 
     def reset(self, **kwargs):
         """Reset this bank of drop targets.
@@ -259,8 +282,7 @@ class DropTargetBank(SystemWideDevice, ModeDevice):
         coil, even if each drop target is configured with its own coil.)
         """
         del kwargs
-        if self.debug:
-            self.log.debug('Resetting')
+        self.debug_log('Resetting')
 
         # figure out all the coils we need to pulse
         coils = set()
@@ -275,13 +297,21 @@ class DropTargetBank(SystemWideDevice, ModeDevice):
         if self.reset_coil:
             coils.add(self.reset_coil)
 
+        if self.config['ignore_switch_ms']:
+            self._ignore_switch_hits = True
+            self.delay.add(ms=self.config['ignore_switch_ms'],
+                           callback=self._restore_switch_hits,
+                           name='ignore_hits')
+
         # now pulse them
         for coil in coils:
-
-            if self.debug:
-                self.log.debug('Pulsing reset coils: %s', coils)
-
+            self.debug_log('Pulsing reset coils: %s', coils)
             coil.pulse()
+
+    def _restore_switch_hits(self):
+        self.machine.events.post('restore')
+        self._ignore_switch_hits = False
+        self.member_target_change()
 
     def member_target_change(self):
         """A member drop target has changed state.
@@ -289,6 +319,10 @@ class DropTargetBank(SystemWideDevice, ModeDevice):
         This method causes this group to update its down and up counts and
         complete status.
         """
+
+        if self._ignore_switch_hits:
+            return
+
         self.down = 0
         self.up = 0
 
@@ -298,11 +332,10 @@ class DropTargetBank(SystemWideDevice, ModeDevice):
             else:
                 self.up += 1
 
-        if self.debug:
-            self.log.debug(
-                'Member drop target status change: Up: %s, Down: %s,'
-                ' Total: %s', self.up, self.down,
-                len(self.drop_targets))
+        self.debug_log(
+            'Member drop target status change: Up: %s, Down: %s,'
+            ' Total: %s', self.up, self.down,
+            len(self.drop_targets))
 
         if self.down == len(self.drop_targets):
             self._bank_down()
@@ -313,8 +346,7 @@ class DropTargetBank(SystemWideDevice, ModeDevice):
 
     def _bank_down(self):
         self.complete = True
-        if self.debug:
-            self.log.debug('All targets are down')
+        self.debug_log('All targets are down')
 
         if self.config['reset_on_complete']:
             self.debug_log("Reset on complete after %s", self.config['reset_on_complete'])
@@ -328,8 +360,7 @@ class DropTargetBank(SystemWideDevice, ModeDevice):
 
     def _bank_up(self):
         self.complete = False
-        if self.debug:
-            self.log.debug('All targets are up')
+        self.debug_log('All targets are up')
         self.machine.events.post('drop_target_bank_' + self.name + '_up')
         '''event: drop_target_bank_(name)_up
         desc: Every drop target in the drop target bank called
@@ -348,5 +379,8 @@ class DropTargetBank(SystemWideDevice, ModeDevice):
 
     def device_removed_from_mode(self, mode):
         """Remove targets which were added in this mode."""
+
+        self.delay.remove('ignore_hits')
+
         for target in self.drop_targets:
             target.remove_from_bank(self)

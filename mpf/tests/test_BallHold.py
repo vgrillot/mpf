@@ -1,5 +1,3 @@
-from mpf.tests.MpfFakeGameTestCase import MpfFakeGameTestCase
-
 from mpf.tests.MpfTestCase import MpfTestCase
 from unittest.mock import MagicMock
 
@@ -127,6 +125,12 @@ class TestBallHold(MpfTestCase):
         self.assertEqual(0, self._captured)
         self.assertEqual(0, self._missing)
 
+        self.mock_event("yes")
+        self.mock_event("no")
+        self.post_event("test_conditional_event")
+        self.assertEventCalled("no")
+        self.assertEventNotCalled("yes")
+
         coil1.pulse = MagicMock()
         coil2.pulse = MagicMock()
         coil3.pulse = MagicMock()
@@ -135,6 +139,12 @@ class TestBallHold(MpfTestCase):
         self.machine.switch_controller.process_switch("s_ball_switch_hold1", 1)
         self.advance_time_and_run(1)
         self.assertEqual(1, hold.balls)
+
+        self.mock_event("yes")
+        self.mock_event("no")
+        self.post_event("test_conditional_event")
+        self.assertEventNotCalled("no")
+        self.assertEventCalled("yes")
 
         # request another ball
         self.machine.playfield.add_ball(1)
@@ -568,7 +578,8 @@ class TestBallHoldSmart(MpfTestCase):
         self.assertEqual(1, self.machine.playfield.balls)
 
         # drain ball on pf
-        self.hit_switch_and_run("s_ball_switch1", 1)
+        self.machine.default_platform.add_ball_to_device(self.machine.ball_devices.test_trough)
+        self.advance_time_and_run(1)
 
         # machine waits for the hold
         self.advance_time_and_run(10)
@@ -580,5 +591,17 @@ class TestBallHoldSmart(MpfTestCase):
         self.assertEqual(1, self.machine.playfield.balls)
 
         # once the ball drains move on to the ball 2
-        self.hit_switch_and_run("s_ball_switch2", 1)
+        self.machine.default_platform.add_ball_to_device(self.machine.ball_devices.test_trough)
+        self.advance_time_and_run(1)
         self.assertEqual(2, self.machine.game.player.ball)
+
+        # next ball
+        self.advance_time_and_run(10)
+        self.assertBallsOnPlayfield(1)
+
+        # drain again
+        self.machine.default_platform.add_ball_to_device(self.machine.ball_devices.test_trough)
+        self.advance_time_and_run(1)
+
+        # there should be no hold this time
+        self.assertEqual(3, self.machine.game.player.ball)

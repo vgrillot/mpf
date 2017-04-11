@@ -121,6 +121,8 @@ class BallCountHandler(BallDeviceStateHandler):
         super().__init__(ball_device)
         # inputs
         self._is_counting = asyncio.Lock(loop=self.machine.clock.loop)
+        self._count_valid = asyncio.Event(loop=self.machine.clock.loop)
+        self._revalidate = asyncio.Event(loop=self.machine.clock.loop)
         self._eject_started = asyncio.Event(loop=self.machine.clock.loop)
         self._eject_ended = asyncio.Event(loop=self.machine.clock.loop)
         self._has_balls = asyncio.Event(loop=self.machine.clock.loop)
@@ -138,15 +140,10 @@ class BallCountHandler(BallDeviceStateHandler):
         """Return balls which are already handled."""
         return self._ball_count
 
-    @property
-    def expected_balls(self):
-        """Return the number of balls we expect in the future."""
-        if self.ball_device.outgoing_balls_handler.state in ["ball_left", "failed_confirm"]:
-            return self._ball_count - 1
-        return self._ball_count
-
     def _set_ball_count(self, count):
         self._ball_count = count
+        # mirror variable at ball device for monitor
+        self.ball_device.counted_balls = count
         if self._ball_count > 0:
             self._has_balls.set()
         else:
@@ -165,12 +162,19 @@ class BallCountHandler(BallDeviceStateHandler):
         self._ball_count = yield from self.ball_device.counter.count_balls()
         if self._ball_count > 0:
             self._has_balls.set()
+        self.ball_device.counted_balls = self._ball_count
         yield from super().initialise()
+        self._count_valid.set()
+
+    @property
+    def has_ball(self):
+        """Return true if the device has at least one ball."""
+        return self._ball_count > 0
 
     @asyncio.coroutine
     def wait_for_ball(self):
         """Wait until the device has a ball."""
-        if self._ball_count > 0:
+        if self.has_ball:
             self.debug_log("We have %s balls.", self._ball_count)
             return
 
@@ -203,6 +207,8 @@ class BallCountHandler(BallDeviceStateHandler):
                 self.debug_log("Ready to receive from %s. Free space %s (Capacity: %s, Balls: %s), incoming_balls: %s",
                                source, free_space, self.ball_device.config['ball_capacity'], self._ball_count,
                                incoming_balls)
+                # wait for the counter to be ready
+                yield from self.ball_device.counter.wait_for_ready_to_receive()
                 return True
 
             self.debug_log("Not ready to receive from %s. Free space %s (Capacity: %s, Balls: %s), incoming_balls: %s",
@@ -238,9 +244,12 @@ class BallCountHandler(BallDeviceStateHandler):
     def _run(self):
         while True:
             # wait for ball changes
-            ball_changes = Util.ensure_future(self.ball_device.counter.wait_for_ball_count_changes(self._ball_count),
+            ball_changes = Util.ensure_future(self.ball_device.counter.wait_for_ball_activity(),
                                               loop=self.machine.clock.loop)
-            event = yield from Util.first([ball_changes, self._eject_started.wait()], loop=self.machine.clock.loop)
+            revalidate_future = Util.ensure_future(self._revalidate.wait(), loop=self.machine.clock.loop)
+            event = yield from Util.first([ball_changes, revalidate_future, self._eject_started.wait()],
+                                          loop=self.machine.clock.loop)
+            self._revalidate.clear()
 
             # get lock and update count
             if self._is_counting.locked():
@@ -248,27 +257,42 @@ class BallCountHandler(BallDeviceStateHandler):
                 yield from self._is_counting.acquire()
                 new_balls = yield from self.ball_device.counter.count_balls()
                 self.debug_log("Eject ended")
+            elif event == revalidate_future:
+                yield from self._is_counting.acquire()
+                new_balls = yield from self.ball_device.counter.count_balls()
             else:
                 if event != ball_changes:
                     raise AssertionError("Event order problem")
-                new_balls = yield from ball_changes
                 yield from self._is_counting.acquire()
+                new_balls = yield from self.ball_device.counter.count_balls()
 
             self.debug_log("Counting idle")
 
-            old_ball_count = self._ball_count
-            self._set_ball_count(new_balls)
-            if new_balls > old_ball_count:
-                self.debug_log("BCH: Found %s new balls", new_balls - old_ball_count)
-                # handle new balls via incoming balls handler
-                for _ in range(new_balls - old_ball_count):
-                    yield from self.ball_device.incoming_balls_handler.ball_arrived()
-            elif new_balls < old_ball_count:
-                self.debug_log("BCH: Lost %s balls", old_ball_count - new_balls)
-                for _ in range(old_ball_count - new_balls):
-                    yield from self.ball_device.lost_idle_ball()
+            # when jammed do not trust other switches except the jam. keep old count
+            if not self.ball_device.counter.is_jammed() or new_balls != 1:
+                # otherwise handle balls
+                old_ball_count = self._ball_count
+                self._set_ball_count(new_balls)
+                if new_balls > old_ball_count:
+                    self.debug_log("BCH: Found %s new balls", new_balls - old_ball_count)
+                    # handle new balls via incoming balls handler
+                    for _ in range(new_balls - old_ball_count):
+                        yield from self.ball_device.incoming_balls_handler.ball_arrived()
+                elif new_balls < old_ball_count:
+                    self.debug_log("BCH: Lost %s balls", old_ball_count - new_balls)
+                    for _ in range(old_ball_count - new_balls):
+                        yield from self.ball_device.lost_idle_ball()
 
             self._is_counting.release()
+            self._count_valid.set()
+
+    @asyncio.coroutine
+    def wait_for_count_is_valid(self):
+        """Wait until count is valid."""
+        self._count_valid.clear()
+        self._revalidate.set()
+        # wait for ball_counter to become ready
+        yield from self._count_valid.wait()
 
     @asyncio.coroutine
     def entrance_during_eject(self):

@@ -2,6 +2,7 @@
 mode:
     start_events: start_mode_with_timers
     stop_events: stop_mode_with_timers
+    game_mode: false
 timers:
     timer_down:
         debug: True
@@ -73,3 +74,12 @@ timers:
             - event: set_tick_interval_timer_up
               action: set_tick_interval
               value: 2
+            - event: reset_tick_interval
+              action: reset_tick_interval
+    timer_player_var:
+        debug: True
+        start_value: current_player.start
+        end_value: current_player.end
+        direction: up
+        tick_interval: 1s
+        start_running: yes

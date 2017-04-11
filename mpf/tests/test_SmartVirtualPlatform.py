@@ -37,34 +37,50 @@ class TestSmartVirtualPlatform(MpfTestCase):
         self.assertEqual(False, self.machine.switch_controller.is_active('device1_s2'))
 
     def test_eject_with_plunger(self):
-        self.machine.ball_devices.device1.config['mechanical_eject'] = True
-        self.machine.ball_devices.device1.config['eject_coil'] = None
+        trough = self.machine.ball_devices.trough2
+        plunger = self.machine.ball_devices.plunger2
 
-        self.assertEqual(1, self.machine.ball_devices.device1.balls)
-        self.assertEqual(0, self.machine.ball_devices.device2.balls)
-        self.assertEqual(False, self.machine.switch_controller.is_active('device2_s1'))
-        self.assertEqual(False, self.machine.switch_controller.is_active('device2_s2'))
-        self.assertEqual(True, self.machine.switch_controller.is_active('device1_s1'))
-        self.assertEqual(False, self.machine.switch_controller.is_active('device1_s2'))
+        # add two balls to trough
+        self.machine.default_platform.add_ball_to_device(trough)
+        self.machine.default_platform.add_ball_to_device(trough)
+        self.advance_time_and_run()
 
-        self.machine.ball_devices.device1.setup_player_controlled_eject(target=self.machine.ball_devices.device2)
+        self.assertEqual(2, trough.balls)
+        self.assertEqual(0, plunger.balls)
+        self.assertBallsOnPlayfield(0)
+        self.assertTrue(self.machine.switch_controller.is_active('trough2_1'))
+        self.assertTrue(self.machine.switch_controller.is_active('trough2_2'))
+        self.assertFalse(self.machine.switch_controller.is_active('trough2_3'))
+        self.assertFalse(self.machine.switch_controller.is_active('plunger2'))
+
+        self.machine.playfield.add_ball(1, plunger)
         self.advance_time_and_run(1)
 
-        self.assertEqual(1, self.machine.ball_devices.device1.balls)
-        self.assertEqual(0, self.machine.ball_devices.device2.balls)
-        self.assertEqual(False, self.machine.switch_controller.is_active('device2_s1'))
-        self.assertEqual(False, self.machine.switch_controller.is_active('device2_s2'))
-        self.assertEqual(True, self.machine.switch_controller.is_active('device1_s1'))
-        self.assertEqual(False, self.machine.switch_controller.is_active('device1_s2'))
+        self.assertEqual(1, trough.balls)
+        self.assertEqual(1, plunger.balls)
+        self.assertBallsOnPlayfield(0)
+        self.assertFalse(self.machine.switch_controller.is_active('trough2_1'))
+        self.assertTrue(self.machine.switch_controller.is_active('trough2_2'))
+        self.assertFalse(self.machine.switch_controller.is_active('trough2_3'))
+        self.assertTrue(self.machine.switch_controller.is_active('plunger2'))
 
         self.advance_time_and_run(3)
+        self.assertEqual(1, trough.balls)
+        self.assertEqual(0, plunger.balls)
+        self.assertBallsOnPlayfield(0)
+        self.assertFalse(self.machine.switch_controller.is_active('trough2_1'))
+        self.assertTrue(self.machine.switch_controller.is_active('trough2_2'))
+        self.assertFalse(self.machine.switch_controller.is_active('trough2_3'))
+        self.assertFalse(self.machine.switch_controller.is_active('plunger2'))
 
-        self.assertEqual(0, self.machine.ball_devices.device1.balls)
-        self.assertEqual(0, self.machine.ball_devices.device2.balls)
-        self.assertEqual(False, self.machine.switch_controller.is_active('device2_s1'))
-        self.assertEqual(False, self.machine.switch_controller.is_active('device2_s2'))
-        self.assertEqual(False, self.machine.switch_controller.is_active('device1_s1'))
-        self.assertEqual(False, self.machine.switch_controller.is_active('device1_s2'))
+        self.advance_time_and_run(10)
+        self.assertEqual(1, trough.balls)
+        self.assertEqual(0, plunger.balls)
+        self.assertBallsOnPlayfield(1)
+        self.assertFalse(self.machine.switch_controller.is_active('trough2_1'))
+        self.assertTrue(self.machine.switch_controller.is_active('trough2_2'))
+        self.assertFalse(self.machine.switch_controller.is_active('trough2_3'))
+        self.assertFalse(self.machine.switch_controller.is_active('plunger2'))
 
     def _ball_swallower(self, unclaimed_balls, **kwargs):
         return {'unclaimed_balls': 0}
@@ -171,8 +187,8 @@ class TestSmartVirtualPlatform(MpfTestCase):
         self.assertTrue(self.machine.drop_targets['left2'].complete)
         self.assertTrue(self.machine.drop_target_banks['left_bank'].complete)
 
-        # it should reset after 1s
-        self.advance_time_and_run()
+        # it should reset after 1.5s
+        self.advance_time_and_run(1.5)
         self.assertFalse(self.machine.switch_controller.is_active('switch1'))
         self.assertFalse(self.machine.switch_controller.is_active('switch2'))
         self.assertFalse(self.machine.drop_targets['left1'].complete)
