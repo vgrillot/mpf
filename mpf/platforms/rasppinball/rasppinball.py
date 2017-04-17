@@ -123,12 +123,12 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             #   disable sw
             for num, sw in self.switches.items():
                 if (num in self.old_key) and (not num in s):
-                    print ("%s OFF" % num)
+                    #print ("%s OFF" % num)
                     self.machine.switch_controller.process_switch_by_num(sw.number, state=0, platform=self, logical=False)
 
             for num, sw in self.switches.items():
                 if (not num in self.old_key) and (num in s):
-                    print ("%s ON" % num)
+                    #print ("%s ON" % num)
                     self.machine.switch_controller.process_switch_by_num(sw.number, state=1, platform=self, logical=False)
 
             self.old_key = s
@@ -139,9 +139,9 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         del dt
         self.update_kb()
 
-        if self.strip.updated:
-            self.strip.updated = False
-            self.strip.show()
+        #if self.strip.updated:
+        #    self.strip.updated = False
+        self.strip.show()
 
 
     def get_hw_switch_states(self):
@@ -165,7 +165,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         #print(config)
         number = config['number']
-        print("configure_switch(%s)" % (number))
+        self.log.debug("configure_switch(%s)" % (number))
         switch = RASPSwitch(config, number)
         self.switches[number] = switch
         return switch
@@ -180,7 +180,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         #print(config)
         number = config['number']
-        print("configure_driver(%s)" % (number))
+        self.log.debug("configure_driver(%s)" % (number))
         driver = RASPDriver(config, number)
         self.drivers[number] = driver
         return driver
@@ -198,7 +198,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         """
         number = config['number']
-        print("configure_led(%s)" % number)
+        self.log.debug("configure_led(%s)" % number)
         #strip = self.strips[0]
         strip = self.strip
         led = RASPLed(config, number, strip)
@@ -288,7 +288,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         Args:
             msg: messaged which was received
         """
-        cmd, all_param = msg.split(":")
+        all = msg.split(":")
+        if len(all) != 2:
+          self.log.warning("Recv bad formated cmd", msg)
+        cmd, all_param = all[:2]
         params = all_param.split(";")
 
         if cmd == "":
@@ -393,7 +396,7 @@ class RASPLed(RGBLEDPlatformInterface):
         new_color = "{0}{1}{2}".format(hex(int(color[0]))[2:].zfill(2),
                                        hex(int(color[1]))[2:].zfill(2),
                                        hex(int(color[2]))[2:].zfill(2))
-        #self.log.info("color(%s : %s -> %s)" % (self.number, color, new_color))
+        #self.log.info("RASPLes.color(%s : %s -> %s)" % (self.number, color, new_color))
         #print("color(%s -> %s)" % (self.number, new_color))
         try:
             self.current_color = new_color
@@ -449,24 +452,24 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         #raise NotImplementedError("Implement!")
 
     def rule_clear(self, coil_pin, enable_sw_id):
-        msg = "RUL:CLR:%d:%d\n" % (coil_pin, enable_sw_id)
-        self.send(msg)
+        msg = "RUL:CLR:%s:%s\n" % (coil_pin, enable_sw_id)
+        self.send(msg.encode())
 
-    def rule_add(self, hwrule_type, coil_pin, enable_sw_id, disable_sw_id=0, duration=10):
-        msg = "RUL:ADD:%d:%d:%d:%d:%d\n" % (hwrule_type, coil_pin, enable_sw_id, disable_sw_id, duration)
-        self.send(msg)
+    def rule_add(self, hwrule_type, coil_pin, enable_sw_id, disable_sw_id='0', duration=10):
+        msg = "RUL:ADD:%d:%s:%s:%s:%d\n" % (hwrule_type, coil_pin, enable_sw_id, disable_sw_id, duration)
+        self.send(msg.encode())
 
     def driver_pulse(self, coil_pin):
-        msg = "DRV:PUL:%d\n" % (coil_pin)
-        self.send(msg)
+        msg = "DRV:PUL:%s\n" % (coil_pin)
+        self.send(msg.encode())
 
     def driver_enable(self, coil_pin):
-        msg = "DRV:ENB:%d\n" % (coil_pin)
-        self.send(msg)
+        msg = "DRV:ENB:%s\n" % (coil_pin)
+        self.send(msg.encode())
 
     def driver_disable(self, coil_pin):
-        msg = "DRV:DIS:%d\n" % (coil_pin)
-        self.send(msg)
+        msg = "DRV:DIS:%s\n" % (coil_pin)
+        self.send(msg.encode())
 
 
 
