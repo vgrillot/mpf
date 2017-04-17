@@ -38,14 +38,14 @@ class ModeDevice(Device, metaclass=abc.ABCMeta):
         raise AssertionError("Device {} cannot be overloaded.".format(self))
 
     def add_control_events_in_mode(self, mode):
-        """Called on mode start if this device has any control events in that mode.
+        """Called on mode start if this device has any mode control events.
 
         Args:
             mode: Mode which loaded the device
         """
-        del mode
         if "enable_events" in self.config and not self.config['enable_events']:
-            self.enable()
+            mode.add_mode_event_handler("mode_{}_started".format(mode.name),
+                                        self.enable, priority=100)
 
     def remove_control_events_in_mode(self):
         """Remove control events."""
@@ -61,4 +61,4 @@ class ModeDevice(Device, metaclass=abc.ABCMeta):
         """
         del mode
         raise NotImplementedError(
-            '{} does not have a device_removed_from_mode() method'.format(self.name))
+            '{} does not have a device_removed_from_mode() method'.format(self))

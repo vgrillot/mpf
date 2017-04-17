@@ -1,10 +1,14 @@
 """An achievement which can be reached in a pinball machine."""
+
+from mpf.core.device_monitor import DeviceMonitor
+
 from mpf.core.mode import Mode
 from mpf.core.mode_device import ModeDevice
 from mpf.core.player import Player
 from mpf.devices.achievement_group import AchievementGroup
 
 
+@DeviceMonitor(_state="state")
 class Achievement(ModeDevice):
 
     """An achievement in a pinball machine.
@@ -16,6 +20,7 @@ class Achievement(ModeDevice):
     config_section = 'achievements'
     collection = 'achievements'
     class_label = 'achievement'
+    allow_empty_configs = True
 
     def __init__(self, machine, name):
         """Initialise achievement."""
@@ -32,7 +37,10 @@ class Achievement(ModeDevice):
 
     @property
     def _state(self):
-        return self._player.achievements[self.name]
+        try:
+            return self._player.achievements[self.name]
+        except (AttributeError, KeyError):
+            return ''
 
     @_state.setter
     def _state(self, value):
@@ -102,10 +110,10 @@ class Achievement(ModeDevice):
         if not self._player:
             return
 
-        if self.config['start_enabled']:
-            self._state = "enabled"
-        else:
+        if self.config['enable_events']:
             self._state = "disabled"
+        else:
+            self._state = "enabled"
 
         self._run_state()
 
@@ -158,7 +166,7 @@ class Achievement(ModeDevice):
 
             self._show = self.machine.shows[show].play(
                 priority=self._mode.priority,
-                loops=-1,
+                loops=-1, sync_ms=self.config['sync_ms'],
                 show_tokens=self.config['show_tokens'])
 
         for group in self._group_memberships:
@@ -205,9 +213,21 @@ class Achievement(ModeDevice):
             self._show.stop()
 
     def add_to_group(self, group):
+        """Add this achievement to an achievement group.
+
+        Args:
+            group: The achievement group to add this achievement to.
+
+        """
         assert isinstance(group, AchievementGroup)
         self._group_memberships.add(group)
 
     def remove_from_group(self, group):
+        """Remove this achievement from an achievement group.
+
+        Args:
+            group: The achievement group to remove this achievement from.
+
+        """
         assert isinstance(group, AchievementGroup)
         self._group_memberships.discard(group)

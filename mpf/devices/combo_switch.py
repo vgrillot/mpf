@@ -1,22 +1,22 @@
-"""Contains the Combo Switch device class"""
+"""Contains the Combo Switch device class."""
 
 from mpf.core.delays import DelayManager, DelayManagerRegistry
 from mpf.core.device_monitor import DeviceMonitor
 from mpf.core.mode_device import ModeDevice
 from mpf.core.system_wide_device import SystemWideDevice
 
+
 @DeviceMonitor("state")
 class ComboSwitch(SystemWideDevice, ModeDevice):
 
-    """Combo Switch device"""
+    """Combo Switch device."""
 
     config_section = 'combo_switches'
     collection = 'combo_switches'
     class_label = 'combo_switch'
 
     def __init__(self, machine, name):
-        """Initialize Combo Switch"""
-
+        """Initialize Combo Switch."""
         super().__init__(machine, name)
         self.states = ['inactive', 'both', 'one']
         self._state = 'inactive'
@@ -61,6 +61,11 @@ class ComboSwitch(SystemWideDevice, ModeDevice):
         return True
 
     def device_removed_from_mode(self, mode):
+        """Mode ended.
+
+        Args:
+            mode: mode which stopped
+        """
         del mode
 
         self._remove_switch_handlers()
@@ -107,8 +112,6 @@ class ComboSwitch(SystemWideDevice, ModeDevice):
 
         if self._switches_2_active:
             return
-
-
 
         if not self.config['hold_time']:
             self._activate_switches_2()
@@ -207,7 +210,6 @@ class ComboSwitch(SystemWideDevice, ModeDevice):
 
     def _switch_state(self, state):
         """Post events for current step."""
-
         if state not in self.states:
             raise ValueError("Received invalid state: {}".format(state))
 

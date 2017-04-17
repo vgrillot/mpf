@@ -44,11 +44,15 @@ class MpfGameTestCase(MpfTestCase):
         self.assertEqual(prev_players + 1, self.machine.game.num_players)
 
     def assertBallNumber(self, number):
+        self.assertGameIsRunning()
         self.assertEqual(number, self.machine.game.player.ball)
 
+    def assertBallsInPlay(self, balls):
+        self.assertEqual(balls, self.machine.game.balls_in_play)
+
     def drain_ball(self):
-        self.machine.game.balls_in_play = 0
-        self.advance_time_and_run()
+        drain = self.machine.ball_devices.items_tagged("drain")[0]
+        self.machine.default_platform.add_ball_to_device(drain)
 
     def assertPlayerNumber(self, number):
         self.assertEqual(number, self.machine.game.player.index + 1)
@@ -61,7 +65,7 @@ class MpfGameTestCase(MpfTestCase):
         self.assertGameIsNotRunning()
 
     def assertGameIsRunning(self):
-        self.assertIsNotNone(self.machine.game)
+        self.assertIsNotNone(self.machine.game, "Expected a running game but no game is active.")
 
     def assertGameIsNotRunning(self):
-        self.assertIsNone(self.machine.game)
+        self.assertIsNone(self.machine.game, "Expected game to have ended but game is active.")

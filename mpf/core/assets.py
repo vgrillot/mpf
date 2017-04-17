@@ -1,19 +1,20 @@
 """Contains AssetManager, AssetLoader, and Asset parent classes."""
 import copy
-import logging
 import os
 import random
 import threading
 from collections import deque
+from pathlib import PurePath
 
 import asyncio
 
 from mpf.core.case_insensitive_dict import CaseInsensitiveDict
 from mpf.core.mpf_controller import MpfController
 from mpf.core.utility_functions import Util
+from mpf.core.logging import LogMixin
 
 
-class BaseAssetManager(MpfController):
+class BaseAssetManager(MpfController, LogMixin):
 
     """Base class for the Asset Manager.
 
@@ -21,11 +22,13 @@ class BaseAssetManager(MpfController):
         machine: The machine controller
     """
 
+    # needed here so the auto-detection of child classes works
+    module_name = 'AssetManager'
+    config_name = 'asset_manager'
+
     def __init__(self, machine):
         """Initialise asset manager."""
         super().__init__(machine)
-        self.log = logging.getLogger('AssetManager')
-        self.log.debug("Initializing...")
 
         self.machine.register_boot_hold('assets')
 
@@ -292,6 +295,12 @@ class BaseAssetManager(MpfController):
             # create the actual instance of the Asset object and add it
             # to the self.machine asset attribute dict for that asset class
             for asset in config[ac['disk_asset_section']]:
+                if 'file' not in config[ac['disk_asset_section']][asset]:
+                    msg = "The file associated with the disk-based asset '%s' declared in the " \
+                          "'%s' config section could not be found" % (asset, ac['disk_asset_section'])
+                    self.error_log(msg)
+                    raise FileNotFoundError(msg)
+
                 getattr(self.machine, ac['attribute'])[asset] = ac['cls'](
                     self.machine, name=asset,
                     file=config[ac['disk_asset_section']][asset]['file'],
@@ -356,20 +365,38 @@ class BaseAssetManager(MpfController):
             config = dict()
 
         root_path = os.path.join(path, asset_class['path_string'])
-        self.log.debug("Processing assets from base folder: %s", root_path)
+        self.debug_log("Processing assets from base folder: %s", root_path)
 
+        # ignore temporary files
+        ignore_prefixes = (".", "~")
+        # do not get fooled by windows or mac garbage
+        ignore_files = ("desktop.ini", "Thumbs.db")
+
+        # walk files in the asset root directory (include all subfolders)
         for path, _, files in os.walk(root_path, followlinks=True):
+            # Determine the first-level sub-folder of the current path relative to the
+            # asset root path.  The first level sub-folder is used to determine the
+            # default asset keys based on the assets config section.
+            relative_path = PurePath(path).relative_to(root_path)
+            if len(relative_path.parts) > 0:
+                first_level_subfolder = relative_path.parts[0]
+            else:
+                first_level_subfolder = None
+
             valid_files = [f for f in files if f.endswith(
-                           asset_class['extensions'])]
+                           asset_class['extensions']) and not f.startswith(ignore_prefixes) and f != ignore_files]
+
+            # loop over valid files in the current path
             for file_name in valid_files:
-                folder = os.path.basename(path)
                 name = os.path.splitext(file_name)[0].lower()
                 full_file_path = os.path.join(path, file_name)
 
-                if folder == asset_class['path_string'] or folder not in asset_class['defaults']:
+                # determine default group based on first level sub-folder and location groups
+                # configured in the assets section
+                if first_level_subfolder is None or first_level_subfolder not in asset_class['defaults']:
                     default_string = 'default'
                 else:
-                    default_string = folder
+                    default_string = first_level_subfolder
 
                 # built_up_config is the built-up config dict for that will be
                 # used for the entry for this asset.
@@ -383,6 +410,7 @@ class BaseAssetManager(MpfController):
 
                 # scan through the existing config to see if this file is used
                 # as the file setting for any entry.
+                found_in_config = False
                 for k, v in config.items():
                     if ('file' in v and v['file'] == file_name) or name == k:
                         # if it's found, set the asset entry's name to whatever
@@ -391,6 +419,7 @@ class BaseAssetManager(MpfController):
                         # merge in the config settings for this asset, updating
                         #  the defaults
                         built_up_config.update(config[k])
+                        found_in_config = True
                         break
 
                 # need to send the full file path to the Asset that will
@@ -403,11 +432,16 @@ class BaseAssetManager(MpfController):
                     built_up_config['load'] = '{}_start'.format(mode_name)
 
                 # Update the config for that asset
+
+                if name in config and not found_in_config:
+                    raise RuntimeError(
+                        "Duplicate Asset name found: {}".format(name))
+
                 config[name] = built_up_config
 
-                self.log.debug("Registering Asset: %s, File: %s, Default "
-                               "Group: %s, Final Config: %s", name, file_name,
-                               default_string, built_up_config)
+                self.info_log("Registering Asset: %s, File: %s, Default "
+                              "Group: %s, Final Config: %s", name, file_name,
+                              default_string, built_up_config)
         return config
 
     def _create_asset_groups(self, config, mode=None):
@@ -528,11 +562,11 @@ class BaseAssetManager(MpfController):
             MPF-based assets.
             '''
 
-        self.log.debug('Loading assets: %s/%s (%s%%)',
-                       self.num_assets_loaded + self.num_bcp_assets_loaded,
-                       total, self.loading_percent)
+        self.info_log('Loading assets: %s/%s (%s%%)',
+                      self.num_assets_loaded + self.num_bcp_assets_loaded,
+                      total, self.loading_percent)
 
-        if not remaining and not self.machine.is_init_done:
+        if not remaining and not self.machine.is_init_done.is_set():
             self.machine.clear_boot_hold('assets')
 
 

@@ -58,12 +58,9 @@ MpfResolver.add_implicit_resolver(
 MpfResolver.add_implicit_resolver(
     u'tag:yaml.org,2002:float',
     re.compile(u'''^(?:
-     [-+]?(?:[0-9][0-9_]*)\\.[0-9_]*(?:[eE][-+]?[0-9]+)?
-    |[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)
-    |\\.[0-9_]+(?:[eE][-+][0-9]+)?
-    |[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\\.[0-9_]*
-    |[-+]?\\.(?:inf|Inf|INF)
-    |\\.(?:nan|NaN|NAN))$''', re.X),
+     [-+]?(?:[0-9][0-9_]*)\\.[0-9_]*
+    |\\.[0-9_]+
+    |[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\\.[0-9_]*)$''', re.X),
     list(u'-+0123456789.'))
 
 MpfResolver.add_implicit_resolver(
@@ -71,7 +68,6 @@ MpfResolver.add_implicit_resolver(
     re.compile(u'''^(?:[-+]?0b[0-1_]+
     |[-+]?[0-9]+
     |[-+]?0o?[0-7_]+
-    |[-+]?(?:0|[1-9][0-9_]*)
     |[-+]?0x[0-9a-fA-F_]+
     |[-+]?[1-9][0-9_]*(?::[0-5]?[0-9])+)$''', re.X),
     list(u'-+0123456789'))
@@ -108,46 +104,6 @@ MpfResolver.add_implicit_resolver(
     u'tag:yaml.org,2002:yaml',
     re.compile(u'^(?:!|&|\\*)$'),
     list(u'!&*'))
-
-
-class MpfRoundTripConstructor(RoundTripConstructor):
-
-    """Resolver with fix."""
-
-    def __init__(self):
-        """Initialise."""
-        super().__init__()
-
-    def construct_yaml_int(self, node):
-        """Add int fix."""
-        value = to_str(self.construct_scalar(node))
-        value = value.replace('_', '')
-        sign = +1
-        if value[0] == '-':
-            sign = -1
-        if value[0] in '+-':
-            value = value[1:]
-        if value == '0':
-            return 0
-        elif value.startswith('0b'):
-            return sign * int(value[2:], 2)
-        elif value.startswith('0x'):
-            return sign * int(value[2:], 16)
-        elif value.startswith('0o'):
-            return sign * int(value[2:], 8)
-        # elif value[0] == '0':
-        #    return sign*int(value, 8)
-        elif ':' in value:
-            digits = [int(part) for part in value.split(':')]
-            digits.reverse()
-            base = 1
-            int_value = 0
-            for digit in digits:
-                int_value += digit * base
-                base *= 60
-            return sign * int_value
-        else:
-            return sign * int(value)
 
 
 class MpfConstructor(Constructor):
@@ -188,47 +144,8 @@ class MpfConstructor(Constructor):
             mapping[key] = value
         return mapping
 
-    def construct_yaml_int(self, node):
-        """Add int fix."""
-        value = to_str(self.construct_scalar(node))
-        value = value.replace('_', '')
-        sign = +1
-        if value[0] == '-':
-            sign = -1
-        if value[0] in '+-':
-            value = value[1:]
-        if value == '0':
-            return 0
-        elif value.startswith('0b'):
-            return sign * int(value[2:], 2)
-        elif value.startswith('0x'):
-            return sign * int(value[2:], 16)
-        elif value.startswith('0o'):
-            return sign * int(value[2:], 8)
-        # elif value[0] == '0':
-        #    return sign*int(value, 8)
-        elif ':' in value:
-            digits = [int(part) for part in value.split(':')]
-            digits.reverse()
-            base = 1
-            int_value = 0
-            for digit in digits:
-                int_value += digit * base
-                base *= 60
-            return sign * int_value
-        else:
-            return sign * int(value)
 
-MpfRoundTripConstructor.add_constructor(
-    u'tag:yaml.org,2002:int',
-    MpfRoundTripConstructor.construct_yaml_int)
-
-MpfConstructor.add_constructor(
-    u'tag:yaml.org,2002:int',
-    MpfConstructor.construct_yaml_int)
-
-
-class MpfRoundTripLoader(Reader, RoundTripScanner, Parser, Composer, MpfRoundTripConstructor, MpfResolver):
+class MpfRoundTripLoader(Reader, RoundTripScanner, Parser, Composer, RoundTripConstructor, MpfResolver):
 
     """Config loader which can roundtrip."""
 
@@ -238,7 +155,7 @@ class MpfRoundTripLoader(Reader, RoundTripScanner, Parser, Composer, MpfRoundTri
         RoundTripScanner.__init__(self)
         Parser.__init__(self)
         Composer.__init__(self)
-        MpfRoundTripConstructor.__init__(self)
+        RoundTripConstructor.__init__(self)
         MpfResolver.__init__(self)
 
 
@@ -271,7 +188,7 @@ class YamlInterface(FileInterface):
     @staticmethod
     def get_config_file_version(filename):
         """Return config file version."""
-        with open(filename) as f:
+        with open(filename, 'r', encoding='utf8') as f:
             file_version = f.readline().split('config_version=')[-1:][0]
 
         try:
@@ -282,9 +199,11 @@ class YamlInterface(FileInterface):
     @staticmethod
     def get_show_file_version(filename):
         """Return show file version."""
-        with open(filename) as f:
-            file_version = f.readline().split('show_version=')[-1:][0]
-
+        with open(filename, 'r', encoding='utf8') as f:
+            try:
+                file_version = f.readline().split('show_version=')[-1:][0]
+            except ValueError:
+                return 0
         try:
             return int(file_version)
         except ValueError:
@@ -349,7 +268,7 @@ class YamlInterface(FileInterface):
         try:
             self.log.debug("Loading file: %s", filename)
 
-            with open(filename) as f:
+            with open(filename, 'r', encoding='utf8') as f:
                 config = YamlInterface.process(f, round_trip)
         except yaml.YAMLError as exc:
             if hasattr(exc, 'problem_mark'):
@@ -390,7 +309,7 @@ class YamlInterface(FileInterface):
         except KeyError:
             include_comments = False
 
-        with open(filename, 'w') as output_file:
+        with open(filename, 'w', encoding='utf8') as output_file:
 
             if include_comments:
                 output_file.write(yaml.dump(data, Dumper=RoundTripDumper,

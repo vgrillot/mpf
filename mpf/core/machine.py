@@ -10,10 +10,14 @@ import tempfile
 import queue
 import sys
 import threading
+from platform import platform, python_version, system, release, version, system_alias, machine
 
+import copy
+
+import asyncio
 from pkg_resources import iter_entry_points
 
-from mpf._version import __version__
+from mpf._version import __version__, version as mpf_version, extended_version as mpf_extended_version
 from mpf.core.case_insensitive_dict import CaseInsensitiveDict
 from mpf.core.clock import ClockBase
 from mpf.core.config_processor import ConfigProcessor
@@ -22,10 +26,11 @@ from mpf.core.data_manager import DataManager
 from mpf.core.delays import DelayManager, DelayManagerRegistry
 from mpf.core.device_manager import DeviceCollection
 from mpf.core.utility_functions import Util
+from mpf.core.logging import LogMixin
 
 
 # pylint: disable-msg=too-many-instance-attributes
-class MachineController(object):
+class MachineController(LogMixin):
 
     """Base class for the Machine Controller object.
 
@@ -51,26 +56,21 @@ class MachineController(object):
     """
 
     def __init__(self, mpf_path: str, machine_path: str, options: dict):
-        """Initialise machine controller."""
+        """Initialize machine controller."""
         self.log = logging.getLogger("Machine")
         self.log.info("Mission Pinball Framework Core Engine v%s", __version__)
 
-        self.log.debug("Command line arguments: %s", options)
+        self.log.info("Command line arguments: %s", options)
         self.options = options
 
-        self.log.debug("MPF path: %s", mpf_path)
+        self.log.info("MPF path: %s", mpf_path)
         self.mpf_path = mpf_path
 
         self.log.info("Machine path: %s", machine_path)
         self.machine_path = machine_path
 
-        self.log.debug("Command line arguments: %s", self.options)
         self.verify_system_info()
         self._exception = None
-
-        self._boot_holds = set()
-        self.is_init_done = False
-        self.register_boot_hold('init')
 
         self._done = False
         self.monitors = dict()
@@ -84,21 +84,31 @@ class MachineController(object):
         self.machine_var_data_manager = None
         self.thread_stopper = threading.Event()
 
-        self.delayRegistry = DelayManagerRegistry(self)
-        self.delay = DelayManager(self.delayRegistry)
-
         self.crash_queue = queue.Queue()
 
         self.config = None
         self.events = None
-        self.machine_config = None
+
         self._set_machine_path()
 
         self.config_validator = ConfigValidator(self)
 
         self._load_config()
+        self.machine_config = self.config
+        self.configure_logging(
+            'Machine',
+            self.config['logging']['console']['machine_controller'],
+            self.config['logging']['file']['machine_controller'])
+
+        self.delayRegistry = DelayManagerRegistry(self)
+        self.delay = DelayManager(self.delayRegistry)
 
         self.clock = self._load_clock()
+
+        self._boot_holds = set()
+        self.is_init_done = asyncio.Event(loop=self.clock.loop)
+        self.register_boot_hold('init')
+
         self._crash_queue_checker = self.clock.schedule_interval(self._check_crash_queue, 1)
 
         self.hardware_platforms = dict()
@@ -121,11 +131,12 @@ class MachineController(object):
         self._register_config_players()
         self._register_system_events()
         self._load_machine_vars()
-        self._run_init_phases()
+        self.clock.loop.run_until_complete(self._run_init_phases())
+        self._init_phases_complete()
 
-        ConfigValidator.unload_config_spec()
-
-        self.clear_boot_hold('init')
+        # wait until all boot holds were released
+        self.clock.loop.run_until_complete(self.is_init_done.wait())
+        self.clock.loop.run_until_complete(self.init_done())
 
     def _exception_handler(self, loop, context):    # pragma: no cover
         # stop machine
@@ -140,44 +151,47 @@ class MachineController(object):
 
     # pylint: disable-msg=no-self-use
     def _load_clock(self):  # pragma: no cover
-        clock = ClockBase()
+        clock = ClockBase(self)
         clock.loop.set_exception_handler(self._exception_handler)
         return clock
 
+    @asyncio.coroutine
     def _run_init_phases(self):
-        self.events.post("init_phase_1")
+        yield from self.events.post_queue_async("init_phase_1")
         '''event: init_phase_1
 
         desc: Posted during the initial boot up of MPF.
         '''
-
-        self.events.process_event_queue()
-        self.events.post("init_phase_2")
+        yield from self.events.post_queue_async("init_phase_2")
         '''event: init_phase_2
 
         desc: Posted during the initial boot up of MPF.
         '''
-        self.events.process_event_queue()
         self._load_plugins()
-        self.events.post("init_phase_3")
+        yield from self.events.post_queue_async("init_phase_3")
         '''event: init_phase_3
 
         desc: Posted during the initial boot up of MPF.
         '''
-        self.events.process_event_queue()
         self._load_scriptlets()
-        self.events.post("init_phase_4")
+
+        yield from self.events.post_queue_async("init_phase_4")
         '''event: init_phase_4
 
         desc: Posted during the initial boot up of MPF.
         '''
-        self.events.process_event_queue()
-        self.events.post("init_phase_5")
+
+        yield from self.events.post_queue_async("init_phase_5")
         '''event: init_phase_5
 
         desc: Posted during the initial boot up of MPF.
         '''
-        self.events.process_event_queue()
+
+    def _init_phases_complete(self, **kwargs):
+        del kwargs
+        ConfigValidator.unload_config_spec()
+
+        self.clear_boot_hold('init')
 
     def _initialize_platforms(self):
         for platform in list(self.hardware_platforms.values()):
@@ -206,7 +220,6 @@ class MachineController(object):
 
     def _validate_config(self):
         self.validate_machine_config_section('machine')
-        self.validate_machine_config_section('hardware')
         self.validate_machine_config_section('game')
 
     def validate_machine_config_section(self, section):
@@ -239,10 +252,10 @@ class MachineController(object):
 
     def _register_plugin_config_players(self):
 
-        self.log.debug("Registering Plugin Config Players")
+        self.debug_log("Registering Plugin Config Players")
         for entry_point in iter_entry_points(group='mpf.config_player',
                                              name=None):
-            self.log.debug("Registering %s", entry_point)
+            self.debug_log("Registering %s", entry_point)
             entry_point.load()(self)
 
     def create_data_manager(self, config_name):     # pragma: no cover
@@ -271,6 +284,32 @@ class MachineController(object):
 
             self.create_machine_var(name=name, value=settings['value'])
 
+        self._load_initial_machine_vars()
+
+        # Create basic system information machine variables
+        self.create_machine_var(name="mpf_version", value=mpf_version)
+        self.create_machine_var(name="mpf_extended_version", value=mpf_extended_version)
+        self.create_machine_var(name="python_version", value=python_version())
+        self.create_machine_var(name="platform", value=platform(aliased=1, terse=0))
+        platform_info = system_alias(system(), release(), version())
+        self.create_machine_var(name="platform_system", value=platform_info[0])
+        self.create_machine_var(name="platform_release", value=platform_info[1])
+        self.create_machine_var(name="platform_version", value=platform_info[2])
+        self.create_machine_var(name="platform_machine", value=machine())
+
+    def _load_initial_machine_vars(self):
+        """Load initial machine var values from config if they did not get loaded from data."""
+        if 'machine_vars' not in self.config:
+            return
+
+        config = self.config['machine_vars']
+        for name, element in config.items():
+            if name not in self.machine_vars:
+                element = self.config_validator.validate_config("machine_vars", copy.deepcopy(element))
+                self.create_machine_var(name=name,
+                                        value=Util.convert_to_type(element['initial_value'], element['value_type']),
+                                        persist=element['persist'])
+
     def _check_crash_queue(self, time):
         del time
         try:
@@ -283,8 +322,6 @@ class MachineController(object):
             self.stop()
 
     def _set_machine_path(self):
-        self.log.debug("Machine path: %s", self.machine_path)
-
         # Add the machine folder to sys.path so we can import modules from it
         sys.path.insert(0, self.machine_path)
 
@@ -337,7 +374,6 @@ class MachineController(object):
                                           ConfigProcessor.load_config_file(
                                               config_file,
                                               config_type='machine'))
-            self.machine_config = self.config
 
         if self.options['create_config_cache']:
             self._cache_config()
@@ -353,7 +389,6 @@ class MachineController(object):
 
             try:
                 self.config = pickle.load(f)
-                self.machine_config = self.config
 
             # unfortunately pickle can raise all kinds of exceptions and we dont want to crash on corrupted cache
             # pylint: disable-msg=broad-except
@@ -406,32 +441,45 @@ class MachineController(object):
                                  .format(python_version[0], python_version[1],
                                          python_version[2]))
 
-        self.log.debug("Python version: %s.%s.%s", python_version[0],
-                       python_version[1], python_version[2])
-        self.log.debug("Platform: %s", sys.platform)
-        self.log.debug("Python executable location: %s", sys.executable)
-        self.log.debug("32-bit Python? %s", sys.maxsize < 2**32)
+        self.log.info("Platform: %s", sys.platform)
+        self.log.info("Python executable location: %s", sys.executable)
+
+        if sys.maxsize < 2**32:
+            self.log.info("Python version: %s.%s.%s (32-bit)", python_version[0],
+                          python_version[1], python_version[2])
+        else:
+            self.log.info("Python version: %s.%s.%s (64-bit)", python_version[0],
+                          python_version[1], python_version[2])
 
     def _load_core_modules(self):
-        self.log.debug("Loading core modules...")
+        self.debug_log("Loading core modules...")
         for name, module in self.config['mpf']['core_modules'].items():
-            self.log.debug("Loading '%s' core module", module)
+            self.debug_log("Loading '%s' core module", module)
             m = Util.string_to_class(module)(self)
             setattr(self, name, m)
 
     def _load_hardware_platforms(self):
-        if not self.options['force_platform']:
-            for section, platform in self.config['hardware'].items():
-                if platform.lower() != 'default' and section != 'driverboards':
-                    self.add_platform(platform)
-            self.set_default_platform(self.config['hardware']['platform'])
-
-        else:
+        """Load all hardware platforms"""
+        self.validate_machine_config_section('hardware')
+        # if platform is forced use that one
+        if self.options['force_platform']:
             self.add_platform(self.options['force_platform'])
             self.set_default_platform(self.options['force_platform'])
+            return
+
+        # otherwise load all platforms
+        for section, platforms in self.config['hardware'].items():
+            if section == 'driverboards':
+                continue
+            for platform in platforms:
+                if platform.lower() != 'default':
+                    self.add_platform(platform)
+
+        # set default platform
+        self.set_default_platform(self.config['hardware']['platform'][0])
 
     def _load_plugins(self):
-        self.log.debug("Loading plugins...")
+        self.debug_log("Loading plugins...")
 
         # TODO: This should be cleaned up. Create a Plugins base class and
         # classmethods to determine if the plugins should be used.
@@ -439,7 +487,7 @@ class MachineController(object):
         for plugin in Util.string_to_list(
                 self.config['mpf']['plugins']):
 
-            self.log.debug("Loading '%s' plugin", plugin)
+            self.debug_log("Loading '%s' plugin", plugin)
 
             plugin_obj = Util.string_to_class(plugin)(self)
             self.plugins.append(plugin_obj)
@@ -448,11 +496,11 @@ class MachineController(object):
         if 'scriptlets' in self.config:
             self.config['scriptlets'] = self.config['scriptlets'].split(' ')
 
-            self.log.debug("Loading scriptlets...")
+            self.debug_log("Loading scriptlets...")
 
             for scriptlet in self.config['scriptlets']:
 
-                self.log.debug("Loading '%s' scriptlet", scriptlet)
+                self.debug_log("Loading '%s' scriptlet", scriptlet)
 
                 scriptlet_obj = Util.string_to_class(self.config['mpf']['paths']['scriptlets'] + "." + scriptlet)(
                     machine=self,
@@ -460,18 +508,17 @@ class MachineController(object):
 
                 self.scriptlets.append(scriptlet_obj)
 
+    @asyncio.coroutine
     def reset(self):
         """Reset the machine.
 
         This method is safe to call. It essentially sets up everything from
         scratch without reloading the config files and assets from disk. This
         method is called after a game ends and before attract mode begins.
-
-        Note: This method is not yet implemented.
         """
-        self.log.debug('Resetting...')
-        self.events.process_event_queue()
-        self.events.post('machine_reset_phase_1')
+        self.debug_log('Resetting...')
+
+        yield from self.events.post_queue_async('machine_reset_phase_1')
         '''Event: machine_reset_phase_1
 
         Desc: The first phase of resetting the machine.
@@ -480,9 +527,12 @@ class MachineController(object):
         posted), and they're also posted subsequently when the machine is reset
         (after existing the service mode, for example).
 
+        This is a queue event. The machine reset phase 1 will not be complete
+        until the queue is cleared.
+
         '''
-        self.events.process_event_queue()
-        self.events.post('machine_reset_phase_2')
+
+        yield from self.events.post_queue_async('machine_reset_phase_2')
         '''Event: machine_reset_phase_2
 
         Desc: The second phase of resetting the machine.
@@ -491,9 +541,12 @@ class MachineController(object):
         posted), and they're also posted subsequently when the machine is reset
         (after existing the service mode, for example).
 
+        This is a queue event. The machine reset phase 2 will not be complete
+        until the queue is cleared.
+
         '''
-        self.events.process_event_queue()
-        self.events.post('machine_reset_phase_3')
+
+        yield from self.events.post_queue_async('machine_reset_phase_3')
         '''Event: machine_reset_phase_3
 
         Desc: The third phase of resetting the machine.
@@ -502,10 +555,19 @@ class MachineController(object):
         posted), and they're also posted subsequently when the machine is reset
         (after existing the service mode, for example).
 
+        This is a queue event. The machine reset phase 3 will not be complete
+        until the queue is cleared.
+
         '''
-        self.events.process_event_queue()
-        self.log.debug('Reset Complete')
-        self._reset_complete()
+
+        """Called when the machine reset process is complete."""
+        self.debug_log('Reset Complete')
+        yield from self.events.post_async('reset_complete')
+        '''event: reset_complete
+
+        desc: The machine reset process is complete
+
+        '''
 
     def add_platform(self, name):
         """Make an additional hardware platform interface available to MPF.
@@ -536,7 +598,7 @@ class MachineController(object):
         """
         try:
             self.default_platform = self.hardware_platforms[name]
-            self.log.debug("Setting default platform to '%s'", name)
+            self.debug_log("Setting default platform to '%s'", name)
         except KeyError:
             raise AssertionError("Cannot set default platform to '{}', as that's not"
                                  " a currently active platform".format(name))
@@ -569,7 +631,7 @@ class MachineController(object):
 
     def run(self):
         """Start the main machine run loop."""
-        self.log.debug("Starting the main run loop.")
+        self.info_log("Starting the main run loop.")
 
         self._run_loop()
 
@@ -628,15 +690,6 @@ class MachineController(object):
         """
         pass
 
-    def _reset_complete(self):
-        self.log.debug('Reset Complete')
-        self.events.post('reset_complete')
-        '''event: reset_complete
-
-        desc: The machine reset process is complete
-
-        '''
-
     def set_machine_var(self, name, value, force_events=False):
         """Set the value of a machine variable.
 
@@ -672,7 +725,7 @@ class MachineController(object):
 
                 self.machine_var_data_manager.save_key(name, disk_var)
 
-            self.log.debug("Setting machine_var '%s' to: %s, (prior: %s, "
+            self.debug_log("Setting machine_var '%s' to: %s, (prior: %s, "
                            "change: %s)", name, value, prev_value,
                            change)
             self.events.post('machine_var_' + name,
@@ -781,50 +834,48 @@ class MachineController(object):
 
     def get_platform_sections(self, platform_section, overwrite):
         """Return platform section."""
-        if not self.options['force_platform']:
-            if not overwrite:
-                if self.config['hardware'][platform_section] != 'default':
-                    return self.hardware_platforms[self.config['hardware'][platform_section]]
-                else:
-                    return self.default_platform
-            else:
-                try:
-                    return self.hardware_platforms[overwrite]
-                except KeyError:
-                    self.add_platform(overwrite)
-                    return self.hardware_platforms[overwrite]
-        else:
+        if self.options['force_platform']:
             return self.default_platform
+
+        if not overwrite:
+            if self.config['hardware'][platform_section][0] != 'default':
+                return self.hardware_platforms[self.config['hardware'][platform_section][0]]
+            else:
+                return self.default_platform
+        else:
+            try:
+                return self.hardware_platforms[overwrite]
+            except KeyError:
+                raise AssertionError("Platform \"{}\" has not been loaded. Please add it to your \"hardware\" section.".
+                                     format(overwrite))
 
     def register_boot_hold(self, hold):
         """Register a boot hold."""
-        if self.is_init_done:
+        if self.is_init_done.is_set():
             raise AssertionError("Register hold after init_done")
         self._boot_holds.add(hold)
 
     def clear_boot_hold(self, hold):
         """Clear a boot hold."""
-        if self.is_init_done:
+        if self.is_init_done.is_set():
             raise AssertionError("Clearing hold after init_done")
         self._boot_holds.remove(hold)
-        self.log.debug('Clearing boot hold %s. Holds remaining: %s', hold, self._boot_holds)
+        self.debug_log('Clearing boot hold %s. Holds remaining: %s', hold, self._boot_holds)
         if not self._boot_holds:
-            self.init_done()
+            self.is_init_done.set()
 
+    @asyncio.coroutine
     def init_done(self):
         """Finish init.
 
         Called when init is done and all boot holds are cleared.
         """
-        self.is_init_done = True
-
-        self.events.post("init_done")
+        yield from self.events.post_async("init_done")
         '''event: init_done
 
         desc: Posted when the initial (one-time / boot) init phase is done. In
         other words, once this is posted, MPF is booted and ready to go.
         '''
-        self.events.process_event_queue()
 
         ConfigValidator.unload_config_spec()
-        self.reset()
+        yield from self.reset()

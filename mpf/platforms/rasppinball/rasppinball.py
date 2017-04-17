@@ -445,7 +445,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
             self.platform.process_received_message(m)
             self.received_msg = self.received_msg[pos + 1:]
 
-    @asyncio.coroutine
+    #@asyncio.coroutine
     def _identify_connection(self):
         """Initialise and identify connection."""
         pass #nothing to identify...

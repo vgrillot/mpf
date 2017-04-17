@@ -1,20 +1,20 @@
 """Contains the DeviceManager base class."""
-
-import logging
 from collections import OrderedDict
 
 from mpf.core.utility_functions import Util
 from mpf.core.case_insensitive_dict import CaseInsensitiveDict
+from mpf.core.mpf_controller import MpfController
 
 
-class DeviceManager(object):
+class DeviceManager(MpfController):
 
     """Manages devices in a MPF machine."""
 
     def __init__(self, machine):
-        """Initialise device manager."""
-        self.machine = machine
-        self.log = logging.getLogger("DeviceManager")
+        """Initialize device manager."""
+        super().__init__(machine)
+
+        self._monitorable_devices = {}
 
         self.collections = OrderedDict()
         self.device_classes = OrderedDict()  # collection_name: device_class
@@ -28,9 +28,23 @@ class DeviceManager(object):
         self.machine.events.add_handler('init_phase_2',
                                         self.create_collection_control_events)
 
+    def get_monitorable_devices(self):
+        """Return all devices which are registered as monitorable."""
+        return self._monitorable_devices
+
+    def register_monitorable_device(self, device):
+        """Register a monitorable device."""
+        if device.collection not in self._monitorable_devices:
+            self._monitorable_devices[device.collection] = {}
+        self._monitorable_devices[device.collection][device.name] = device
+
+    def notify_device_changes(self, device, notify, old, value):
+        """Notify subscribers about changes in a registered device."""
+        self.machine.bcp.interface.notify_device_changes(device, notify, old, value)
+
     def _load_device_modules(self, **kwargs):
         del kwargs
-        self.log.debug("Loading devices...")
+        self.debug_log("Loading devices...")
         for device_type in self.machine.config['mpf']['device_modules']:
             device_cls = Util.string_to_class(device_type)
 
@@ -80,7 +94,7 @@ class DeviceManager(object):
         # create the devices
         for device_name in config:
 
-            if not config[device_name]:
+            if not config[device_name] and not cls.allow_empty_configs:
                 raise AssertionError("Device '{}' has an empty config."
                                      .format(device_name))
 
@@ -150,7 +164,8 @@ class DeviceManager(object):
     def get_device_control_events(self, config):
         """Scan a config dictionary for control_events.
 
-         Yields events, methods, delays, and devices for all the devices and control_events in that config.
+         Yields events, methods, delays, and devices for all the devices and
+         control_events in that config.
 
         Args:
             config: An MPF config dictionary (either machine-wide or mode-
@@ -220,7 +235,7 @@ class DeviceManager(object):
                                mode=None, **kwargs):
         del kwargs
 
-        self.log.debug("_control_event_handler: mode: %s, callback: %s,", mode,
+        self.debug_log("_control_event_handler: mode: %s, callback: %s,", mode,
                        callback)
 
         if ms_delay:

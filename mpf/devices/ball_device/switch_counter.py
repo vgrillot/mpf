@@ -13,7 +13,6 @@ class SwitchCounter(BallDeviceBallCounter):
     This should be used for devices with multiple switches and/or a jam switch. Simple devices with only one switch
     should use a simpler counter.
     """
-    # TODO: write simpler counter for single switch devices
 
     def __init__(self, ball_device, config):
         """Initialise ball counter."""
@@ -39,19 +38,6 @@ class SwitchCounter(BallDeviceBallCounter):
             if not future.done():
                 future.set_result(True)
         self._futures = []
-
-    @asyncio.coroutine
-    def count_balls(self):
-        """Return the current ball count."""
-        while True:
-            # register the waiter before counting to prevent races
-            waiter = self.wait_for_ball_activity()
-            try:
-                balls = self.count_balls_sync()
-                waiter.cancel()
-                return balls
-            except ValueError:
-                yield from waiter
 
     def _count_switches_sync(self):
         """Return active switches or raise ValueError if switches are unstable."""
@@ -92,11 +78,15 @@ class SwitchCounter(BallDeviceBallCounter):
         return self.config['jam_switch'] and self.machine.switch_controller.is_active(
             self.config['jam_switch'].name, ms=self.config['entrance_count_delay'])
 
+    def wait_for_ready_to_receive(self):
+        """Wait until there is at least on inactive switch."""
+        # future returns when ball_count != number of switches
+        return self.wait_for_ball_count_changes(len(self.config['ball_switches']))
+
     @asyncio.coroutine
     def track_eject(self, eject_tracker: EjectTracker, already_left):
         """Return eject_process dict."""
         # count active switches
-        active_switches = []
         while True:
             waiter = self.wait_for_ball_activity()
             try:

@@ -52,48 +52,59 @@ class EntranceSwitchCounter(BallDeviceBallCounter):
 
     def _entrance_switch_handler(self):
         """Add a ball to the device since the entrance switch has been hit."""
-        self._set_future_results()
         self.debug_log("Entrance switch hit")
 
-        if self.config['ball_capacity'] and self.config['ball_capacity'] == self._entrance_count:
-            self.ball_device.log.warning("Device received balls but is already full. Ignoring!")
-            # TODO: ball should be added to pf instead
-            return
+        if self.config['ball_capacity'] and self.config['ball_capacity'] <= self._entrance_count:
+            # do not count beyond capacity
+            self.ball_device.log.warning("Device received balls but is already full!")
+        elif self.config['ball_capacity'] and self.config['entrance_switch_full_timeout'] and \
+                self.config['ball_capacity'] == self._entrance_count + 1:
+            # wait for entrance_switch_full_timeout before setting the device to full capacity
+            pass
+        else:
+            self._set_future_results()
 
-        # increase count
-        self._entrance_count += 1
+            # increase count
+            self._entrance_count += 1
 
     def _entrance_switch_full_handler(self):
         # a ball is sitting on the entrance_switch. assume the device is full
         new_balls = self.config['ball_capacity'] - self._entrance_count
+        self._set_future_results()
         if new_balls > 0:
-            self._set_future_results()
             self.debug_log("Ball is sitting on entrance_switch. Assuming "
                            "device is full. Adding %s balls and setting balls"
                            "to %s", new_balls, self.config['ball_capacity'])
             self._entrance_count += new_balls
 
-    def count_balls_sync(self):
+    def count_balls_sync(self) -> int:
         """Return the number of balls entered."""
-        # TODO: ValueError when entrance switches are not stable
-        return self._entrance_count
+        if self.config['ball_capacity'] and self.config['ball_capacity'] == self._entrance_count:
+            # we are at capacity. this is fine
+            pass
+        elif self.config['ball_capacity'] and self.config['entrance_switch_full_timeout'] and \
+            self.config['ball_capacity'] == self._entrance_count + 1 and \
+            self.machine.switch_controller.is_active(self.config['entrance_switch'].name,
+                                                     ms=self.config['entrance_switch_full_timeout']):
+            # can count when entrance switch is active for at least entrance_switch_full_timeout
+            pass
+        elif self.machine.switch_controller.is_active(self.config['entrance_switch'].name):
+            # cannot count when the entrance_switch is still active
+            raise ValueError
 
-    @asyncio.coroutine
-    def count_balls(self):
-        """Return the number of balls entered."""
-        # TODO: wait when entrance switch is not stable
-        return self.count_balls_sync()
+        return self._entrance_count
 
     def _wait_for_ball_to_leave(self):
         """Wait for a ball to leave."""
-        if self.machine.switch_controller.is_active(self.config['entrance_switch'].name):
-            return self.machine.switch_controller.wait_for_switch(
-                switch_name=self.config['entrance_switch'].name,
-                state=0)
-        else:
-            # wait 10ms
-            done_future = asyncio.sleep(0.01, loop=self.machine.clock.loop)
-            return Util.ensure_future(done_future, loop=self.machine.clock.loop)
+        # wait 10ms
+        done_future = asyncio.sleep(0.01, loop=self.machine.clock.loop)
+        return Util.ensure_future(done_future, loop=self.machine.clock.loop)
+
+    def wait_for_ready_to_receive(self):
+        """Wait until the entrance switch is inactive."""
+        return self.machine.switch_controller.wait_for_switch(
+            switch_name=self.config['entrance_switch'].name,
+            state=0, only_on_change=False)
 
     def wait_for_ball_activity(self):
         """Wait for ball count changes."""

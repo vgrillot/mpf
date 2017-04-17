@@ -10,14 +10,11 @@ class QueueRelayPlayer(ConfigPlayer):
     show_section = None
     device_collection = None
 
-    def _reset_instance_dict(self, context):
-        self.instances[context][self.config_file_section] = []
-
     def play(self, settings, context, priority=0, **kwargs):
         """Block queue event."""
         try:
             queue = kwargs['queue']
-        except IndexError:
+        except KeyError:
             raise AssertionError("Can only use queue relay player with queue event.")
 
         instance_dict = self._get_instance_dict(context)

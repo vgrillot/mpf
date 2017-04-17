@@ -1,61 +1,69 @@
 """Handles outgoing balls."""
 import asyncio
 
+from typing import Generator, TYPE_CHECKING, Optional
+from typing import List
+
 from mpf.core.utility_functions import Util
 from mpf.devices.ball_device.ball_count_handler import EjectTracker
 from mpf.devices.ball_device.ball_device_state_handler import BallDeviceStateHandler
 from mpf.devices.ball_device.incoming_balls_handler import IncomingBall
+
+if TYPE_CHECKING:
+    from mpf.devices.ball_device.ball_device import BallDevice
 
 
 class OutgoingBall:
 
     """One outgoing ball."""
 
-    def __init__(self, target):
+    def __init__(self, target: "BallDevice") -> None:
         """Initialise outgoing ball."""
-        self.max_tries = None
-        self.eject_timeout = None
-        self.target = target
-        self.mechanical = None
-        self.already_left = False
+        self.max_tries = None               # type: int
+        self.eject_timeout = None           # type: int
+        self.target = target                # type: BallDevice
+        self.mechanical = None              # type: bool
+        self.already_left = False           # type: bool
 
 
 class OutgoingBallsHandler(BallDeviceStateHandler):
 
     """Handles all outgoing balls."""
 
-    def __init__(self, ball_device):
+    def __init__(self, ball_device: "BallDevice") -> None:
         """Initialise outgoing balls handler."""
         super().__init__(ball_device)
-        self._eject_queue = asyncio.Queue(loop=self.machine.clock.loop)
-        self._state = "idle"
-        self._current_target = None
-        self._cancel_future = None
+        self._eject_queue = asyncio.Queue(loop=self.machine.clock.loop)     # type: asyncio.Queue
+        self._current_target = None     # type: BallDevice
+        self._cancel_future = None      # type: asyncio.Future
         self._incoming_ball_which_may_skip = asyncio.Event(loop=self.machine.clock.loop)
+        self._incoming_ball_which_may_skip.clear()
         self._no_incoming_ball_which_may_skip = asyncio.Event(loop=self.machine.clock.loop)
-        self._incoming_ball_which_may_skip_obj = None
+        self._no_incoming_ball_which_may_skip.set()
+        self._incoming_ball_which_may_skip_obj = []     # type: List[IncomingBall]
 
     def add_eject_to_queue(self, eject: OutgoingBall):
         """Add an eject request to queue."""
         self._eject_queue.put_nowait(eject)
 
-    def add_incoming_ball_which_may_skip(self, incoming_ball):
+    def add_incoming_ball_which_may_skip(self, incoming_ball: IncomingBall):
         """Add incoming ball which may skip the device."""
-        self._incoming_ball_which_may_skip_obj = incoming_ball
+        self._incoming_ball_which_may_skip_obj.append(incoming_ball)
         self._no_incoming_ball_which_may_skip.clear()
         self._incoming_ball_which_may_skip.set()
 
-    def remove_incoming_ball_which_may_skip(self):
+    def remove_incoming_ball_which_may_skip(self, incoming_ball: IncomingBall):
         """Remove incoming ball which may skip the device."""
-        self._incoming_ball_which_may_skip.clear()
-        self._no_incoming_ball_which_may_skip.set()
-        self._incoming_ball_which_may_skip_obj = None
+        self._incoming_ball_which_may_skip_obj.remove(incoming_ball)
+        if not self._incoming_ball_which_may_skip_obj:
+            self._incoming_ball_which_may_skip.clear()
+            self._no_incoming_ball_which_may_skip.set()
 
     @asyncio.coroutine
     def _run(self):
         """Wait for eject queue."""
         while True:
-            self._state = "idle"
+            self.ball_device.set_eject_state("idle")
             self.debug_log("Waiting for eject request.")
             eject_queue_future = Util.ensure_future(self._eject_queue.get(), loop=self.machine.clock.loop)
             incoming_ball_which_may_skip = self._incoming_ball_which_may_skip.wait()
@@ -65,38 +73,39 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
             if event == eject_queue_future:
                 eject_request = yield from event
                 self.debug_log("Got eject request")
-                yield from self.ball_device.ball_count_handler.start_eject()
 
                 if eject_request.already_left:
+                    yield from self.ball_device.ball_count_handler.start_eject()
                     ball_eject_process = yield from self.ball_device.ball_count_handler.track_eject(already_left=True)
                     # no prepare eject because this cannot be blocked
                     yield from self._post_ejecting_event(eject_request, 1)
                     incoming_ball_at_target = self._add_incoming_ball_to_target(eject_request.target)
                     result = yield from self._handle_confirm(eject_request, ball_eject_process, incoming_ball_at_target)
                     if result:
+                        yield from self.ball_device.ball_count_handler.end_eject()
                         continue
 
                 if not (yield from self._ejecting(eject_request)):
                     return
-                yield from self.ball_device.ball_count_handler.end_eject()
             else:
                 yield from self._skipping_ball(self.ball_device.config['eject_targets'][0], True)
 
     @asyncio.coroutine
-    def _skipping_ball(self, target, add_ball_to_target):
+    def _skipping_ball(self, target: "BallDevice", add_ball_to_target: bool):
+        incoming_skipping_ball = self._incoming_ball_which_may_skip_obj[0]
         self.debug_log("Expecting incoming ball which may skip the device.")
         eject_request = OutgoingBall(target)
         yield from self._post_ejecting_event(eject_request, 1)
         incoming_ball_at_target = self._add_incoming_ball_to_target(eject_request.target)
-        confirm_future = incoming_ball_at_target.wait_for_confirm()
-        ball_future = self.ball_device.ball_count_handler.wait_for_ball()
-        futures = [confirm_future, self._no_incoming_ball_which_may_skip.wait(), ball_future]
+        confirm_future = Util.ensure_future(incoming_ball_at_target.wait_for_confirm(), self.machine.clock.loop)
+        ball_future = Util.ensure_future(self.ball_device.ball_count_handler.wait_for_ball(), self.machine.clock.loop)
+        no_incoming_future = Util.ensure_future(self._no_incoming_ball_which_may_skip.wait(), self.machine.clock.loop)
+        futures = [confirm_future, no_incoming_future, ball_future]
         if self._cancel_future:
             futures.append(self._cancel_future)
 
         if target.is_playfield():
-            timeout = self.ball_device.config['eject_timeouts'][target] / 1000 + \
-                self._incoming_ball_which_may_skip_obj.source.config['eject_timeouts'][self.ball_device] / 1000
+            timeout = self.ball_device.config['eject_timeouts'][target] / 1000
         else:
             timeout = None
 
@@ -109,10 +118,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
         if event == confirm_future:
             self.debug_log("Got confirm for skipping ball.")
             yield from self._handle_eject_success(None, eject_request)
-            self._incoming_ball_which_may_skip_obj.ball_arrived()
-            self._incoming_ball_which_may_skip.clear()
-            self._incoming_ball_which_may_skip_obj = None
-            self._no_incoming_ball_which_may_skip.set()
+            incoming_skipping_ball.ball_arrived()
             if add_ball_to_target:
                 target.available_balls += 1
             return True
@@ -122,12 +128,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
 
         self.debug_log("No longer expecting incoming ball which may skip the device.")
 
-    @property
-    def state(self):
-        """Return the current state for legacy reasons."""
-        return self._state
-
-    def find_available_ball_in_path(self, start) -> bool:
+    def find_available_ball_in_path(self, start: "BallDevice") -> bool:
         """Try to remove available ball at the end of the path."""
         if self._current_target == start:
             self.debug_log("Loop detected. Path will not go anywhere.")
@@ -147,7 +148,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
         self.ball_device.log.warning("No eject and no available_balls. Path went nowhere.")
         return False
 
-    def cancel_path_if_target_is(self, start, target) -> bool:
+    def cancel_path_if_target_is(self, start: "BallDevice", target: "BallDevice") -> bool:
         """Check if the ball is going to a certain target and cancel the path in that case.
 
         Args:
@@ -189,38 +190,46 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
     @asyncio.coroutine
     def _ejecting(self, eject_request: OutgoingBall):
         """Perform main eject loop."""
-        # TODO: handle unexpected mechanical eject
         eject_try = 0
         while True:
             self._current_target = eject_request.target
-            self._cancel_future = asyncio.Future(loop=self.machine.clock.loop)
-            ball_future = self.ball_device.ball_count_handler.wait_for_ball()
-            skipping_ball_future = Util.ensure_future(self._incoming_ball_which_may_skip.wait(),
-                                                      loop=self.machine.clock.loop)
-            # wait until we have a ball (might be instant)
-            self._state = "waiting_for_ball"
-            yield from Util.first([self._cancel_future, ball_future, skipping_ball_future],
-                                  loop=self.machine.clock.loop)
 
-            if skipping_ball_future.done() and not skipping_ball_future.cancelled():
+            if not self.ball_device.ball_count_handler.has_ball:
+                # wait until we have a ball
                 self._cancel_future = asyncio.Future(loop=self.machine.clock.loop)
-                result = yield from self._skipping_ball(self._current_target, False)
-                if result or self._cancel_future.done() and not self._cancel_future.cancelled():
-                    return True
-                else:
-                    continue
+                ball_future = Util.ensure_future(self.ball_device.ball_count_handler.wait_for_ball(),
+                                                 loop=self.machine.clock.loop)
+                skipping_ball_future = Util.ensure_future(self._incoming_ball_which_may_skip.wait(),
+                                                          loop=self.machine.clock.loop)
 
-            if self._cancel_future.done() and not self._cancel_future.cancelled():
-                # eject cancelled
-                return True
-            self._cancel_future = None
+                self.ball_device.set_eject_state("waiting_for_ball")
+                result = yield from Util.first([self._cancel_future, ball_future, skipping_ball_future],
+                                               loop=self.machine.clock.loop)
+
+                if result == skipping_ball_future:
+                    self._cancel_future = asyncio.Future(loop=self.machine.clock.loop)
+                    result = yield from self._skipping_ball(self._current_target, False)
+                    if result or self._cancel_future.done() and not self._cancel_future.cancelled():
+                        self._cancel_future = None
+                        return True
+                    else:
+                        self._cancel_future = None
+                        continue
+
+                if self._cancel_future.done() and not self._cancel_future.cancelled():
+                    # eject cancelled
+                    self._cancel_future = None
+                    return True
+                self._cancel_future = None
+
+            self.ball_device.set_eject_state("waiting_for_target_ready")
 
             # inform targets about the eject (can delay the eject)
             yield from self._prepare_eject(eject_request, eject_try)
             # wait for target to be ready
             # TODO: block one spot in target device to prevent double eject
             yield from eject_request.target.wait_for_ready_to_receive(self.ball_device)
-            self._state = "ejecting"
+            self.ball_device.set_eject_state("ejecting")
             result = yield from self._eject_ball(eject_request, eject_try)
             if result:
                 # eject is done. return to main loop
@@ -230,7 +239,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
 
             if eject_request.max_tries and eject_try >= eject_request.max_tries:
                 # stop device
-                self._state = "eject_broken"
+                self.ball_device.set_eject_state("eject_broken")
                 yield from self._failed_eject(eject_request, eject_try, False)
                 self.ball_device.stop()
                 # TODO: inform machine about broken device
@@ -239,7 +248,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
                 yield from self._failed_eject(eject_request, eject_try, True)
 
     @asyncio.coroutine
-    def _prepare_eject(self, eject_request: OutgoingBall, eject_try):
+    def _prepare_eject(self, eject_request: OutgoingBall, eject_try: int):
         yield from self.machine.events.post_queue_async(
             'balldevice_{}_ball_eject_attempt'.format(self.ball_device.name),
             balls=1,
@@ -263,7 +272,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
         '''
 
     @asyncio.coroutine
-    def _failed_eject(self, eject_request: OutgoingBall, eject_try, retry):
+    def _failed_eject(self, eject_request: OutgoingBall, eject_try: int, retry: bool):
         yield from self.machine.events.post_async(
             'balldevice_' + self.ball_device.name + '_ball_eject_failed',
             target=eject_request.target,
@@ -282,12 +291,12 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
         '''
 
     @asyncio.coroutine
-    def _post_ejecting_event(self, eject_request: OutgoingBall, eject_try):
+    def _post_ejecting_event(self, eject_request: OutgoingBall, eject_try: int):
         yield from self.machine.events.post_async(
             'balldevice_{}_ejecting_ball'.format(self.ball_device.name),
             balls=1,
             target=eject_request.target,
-            source=self,
+            source=self.ball_device,
             mechanical_eject=eject_request.mechanical,
             num_attempts=eject_try)
         '''event: balldevice_(name)_ejecting_ball
@@ -308,6 +317,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
         # inform the counter that we are ejecting now
         self.debug_log("Ejecting ball to %s", eject_request.target)
         yield from self._post_ejecting_event(eject_request, eject_try)
+        yield from self.ball_device.ball_count_handler.start_eject()
         ball_eject_process = yield from self.ball_device.ball_count_handler.track_eject()
         try:
             yield from ball_eject_process.will_eject()
@@ -320,7 +330,8 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
             if self.ball_device.ejector:
                 # wait for trigger event
                 if eject_request.mechanical and self.ball_device.config['player_controlled_eject_event']:
-                    trigger = self.machine.events.wait_for_event(self.ball_device.config['player_controlled_eject_event'])
+                    trigger = self.machine.events.wait_for_event(
+                        self.ball_device.config['player_controlled_eject_event'])
                     waiters.append(trigger)
                 elif eject_request.mechanical and self.ball_device.config['mechanical_eject']:
                     # do nothing
@@ -339,6 +350,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
             except asyncio.TimeoutError:
                 # timeout. ball did not leave. failed
                 ball_eject_process.ball_returned()
+                yield from self.ball_device.ball_count_handler.end_eject()
                 return False
 
             if trigger and trigger.done():
@@ -346,15 +358,17 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
                 # TODO: add timeout here
                 yield from ball_left
 
-            self._state = "ball_left"
+            self.ball_device.set_eject_state("ball_left")
             self.debug_log("Ball left")
             incoming_ball_at_target = self._add_incoming_ball_to_target(eject_request.target)
-            return (yield from self._handle_confirm(eject_request, ball_eject_process, incoming_ball_at_target))
+            result = yield from self._handle_confirm(eject_request, ball_eject_process, incoming_ball_at_target)
+            yield from self.ball_device.ball_count_handler.end_eject()
+            return result
         except asyncio.CancelledError:
             ball_eject_process.cancel()
             raise
 
-    def _add_incoming_ball_to_target(self, target) -> IncomingBall:
+    def _add_incoming_ball_to_target(self, target: "BallDevice") -> IncomingBall:
         # we are the source of this ball
         incoming_ball_at_target = IncomingBall(self.ball_device, target)
         if self.ball_device.config['confirm_eject_type'] == "switch":
@@ -376,7 +390,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
             yield from Util.first([confirm_future], timeout=timeout,
                                   loop=self.machine.clock.loop, cancel_others=False)
         except asyncio.TimeoutError:
-            self._state = "failed_confirm"
+            self.ball_device.set_eject_state("failed_confirm")
             self.debug_log("Got timeout before confirm")
             return (yield from self._handle_late_confirm_or_missing(eject_request, ball_eject_process,
                                                                     incoming_ball_at_target))
@@ -399,14 +413,27 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
         eject_success_future = incoming_ball_at_target.wait_for_confirm()
         timeout = self.ball_device.config['ball_missing_timeouts'][eject_request.target] / 1000
 
-        # TODO: remove hack when moving code below
-        yield from asyncio.sleep(0.1, loop=self.machine.clock.loop)
+        # assume that the ball may have skipped the target device by now
+        incoming_ball_at_target.set_can_skip()
 
-        # TODO: move this to a better location
-        if not ball_return_future.done() and not unknown_balls_future.done() and eject_request.target.is_playfield():
-            # if target is playfield mark eject as confirmed
-            self.debug_log("Confirming eject because target is playfield and ball did not return.")
-            incoming_ball_at_target.ball_arrived()
+        if not eject_request.target.is_playfield():
+            yield from eject_request.target.ball_count_handler.wait_for_count_is_valid()
+            if eject_success_future.done():
+                self.debug_log("Got eject confirm (after recounting)")
+                yield from self._handle_eject_success(ball_eject_process, eject_request)
+                return True
+        else:
+            # TODO: remove hack when moving code below
+            yield from asyncio.sleep(0.1, loop=self.machine.clock.loop)
+
+            # TODO: move this to a better location
+            if not ball_return_future.done() and not unknown_balls_future.done() and \
+                    eject_request.target.is_playfield():
+                # if target is playfield mark eject as confirmed
+                self.debug_log("Confirming eject because target is playfield and ball did not return.")
+                incoming_ball_at_target.ball_arrived()
+                yield from self._handle_eject_success(ball_eject_process, eject_request)
+                return True
 
         # TODO: timeout
         try:
@@ -439,7 +466,7 @@ class OutgoingBallsHandler(BallDeviceStateHandler):
                 raise AssertionError("Invalid state")
 
     @asyncio.coroutine
-    def _handle_eject_success(self, ball_eject_process: EjectTracker, eject_request: OutgoingBall):
+    def _handle_eject_success(self, ball_eject_process: Optional[EjectTracker], eject_request: OutgoingBall):
         self.debug_log("Eject successful")
         if ball_eject_process:
             ball_eject_process.eject_success()
