@@ -181,7 +181,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #print(config)
         number = config['number']
         self.log.debug("configure_driver(%s)" % (number))
-        driver = RASPDriver(config, number)
+        driver = RASPDriver(config, number, self)
         self.drivers[number] = driver
         return driver
 
@@ -316,20 +316,23 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
 class RASPDriver(DriverPlatformInterface):
 
-    def __init__(self, config, number):
+    def __init__(self, config, number, platform):
         """Initialise driver."""
         super().__init__(config, number)
+        self.platform = platform
         self.log = logging.getLogger('RASPDriver')
         self.log.info("Driver Settings for %s", self.number)
 
     def disable(self, coil):
         """Disable the driver."""
         self.log.info("RASPDriver.Disable(%s %s)" % (coil.config['label'], coil.hw_driver.number))
+        self.platform.communicator.driver_disable(self, coil.hw_driver.number)
         pass
 
     def enable(self, coil):
         """Enable this driver, which means it's held "on" indefinitely until it's explicitly disabled."""
         self.log.info("RASPDriver.Enable(%s %s)" % (coil.config['label'], coil.hw_driver.number))
+        self.platform.communicator.driver_enable(self, coil.hw_driver.number)
         pass
 
     def get_board_name(self):
@@ -357,6 +360,7 @@ class RASPDriver(DriverPlatformInterface):
         """
         self.log.info("RASPDriver.Pulse(%s %s, %d ms)" %
                        (coil.config['label'], coil.hw_driver.number, milliseconds))
+        self.platform.communicator.driver_pulse(coil.hw_driver.number, milliseconds)
         return milliseconds
 
 
@@ -445,7 +449,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
             self.platform.process_received_message(m)
             self.received_msg = self.received_msg[pos + 1:]
 
-    #@asyncio.coroutine
+    @asyncio.coroutine
     def _identify_connection(self):
         """Initialise and identify connection."""
         pass #nothing to identify...
@@ -455,12 +459,13 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         msg = "RUL:CLR:%s:%s\n" % (coil_pin, enable_sw_id)
         self.send(msg.encode())
 
-    def rule_add(self, hwrule_type, coil_pin, enable_sw_id, disable_sw_id='0', duration=10):
+    def rule_add(self, hwrule_type, coil_pin, enable_sw_id='0', disable_sw_id='0', duration=10):
         msg = "RUL:ADD:%d:%s:%s:%s:%d\n" % (hwrule_type, coil_pin, enable_sw_id, disable_sw_id, duration)
         self.send(msg.encode())
 
-    def driver_pulse(self, coil_pin):
-        msg = "DRV:PUL:%s\n" % (coil_pin)
+    def driver_pulse(self, coil_pin, duration):
+        #!!170418:VG:Add duration
+        msg = "DRV:PUL:%s:%d\n" % (coil_pin, duration)
         self.send(msg.encode())
 
     def driver_enable(self, coil_pin):
