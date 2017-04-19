@@ -216,8 +216,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         as the *sw_num*.
 
         """
-        self.log.info("clear_hw_rule(%s %s %s)" %
-                       (switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        self.log.info("clear_hw_rule(coil=%s sw=%s)" %
+                       (coil.hw_driver.number, switch.hw_switch.number))
         self.communicator.rule_clear(coil.hw_driver.number, switch.hw_switch.number)
 
     def set_pulse_on_hit_rule(self, enable_switch, coil):
@@ -226,8 +226,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         Pulses a driver when a switch is hit. When the switch is released the pulse continues. Typically used for
         autofire coils such as pop bumpers.
         """
-        self.log.info("set_pulse_on_hit_rule(%s %s %s)" %
-                       (enable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        self.log.info("set_pulse_on_hit_rule(coil=%s sw=%s)" %
+                       (coil.hw_driver.number, enable_switch.hw_switch.number))
         self.communicator.rule_add(1, coil.hw_driver.number, enable_switch.hw_switch.number)
 
     def set_pulse_on_hit_and_release_rule(self, enable_switch, coil):
@@ -236,8 +236,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         Pulses a driver when a switch is hit. When the switch is released the pulse is canceled. Typically used on
         the main coil for dual coil flippers without eos switch.
         """
-        self.log.info("set_pulse_on_hit_and_release_rule(%s %s %s)" %
-                       (enable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        self.log.info("set_pulse_on_hit_and_release_rule(coil=%s sw=%s)" %
+                       (coil.hw_driver.number, enable_switch.hw_switch.number))
         self.communicator.rule_add(2, coil.hw_driver.number, enable_switch.hw_switch.number)
 
     def set_pulse_on_hit_and_enable_and_release_rule(self, enable_switch, coil):
@@ -246,8 +246,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         Pulses a driver when a switch is hit. Then enables the driver (may be with pwm). When the switch is released
         the pulse is canceled and the driver gets disabled. Typically used for single coil flippers.
         """
-        self.log.info("set_pulse_on_hit_and_enable_and_release_rule(%s %s %s)" %
-                       (enable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        self.log.info("set_pulse_on_hit_and_enable_and_release_rule(coil=%s sw=%s)" %
+                       (coil.hw_driver.number, enable_switch.hw_switch.number))
         self.communicator.rule_add(3, coil.hw_driver.number, enable_switch.hw_switch.number)
 
     def set_pulse_on_hit_and_enable_and_release_and_disable_rule(self, enable_switch, disable_switch, coil):
@@ -257,8 +257,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         the pulse is canceled and the driver gets disabled. When the second disable_switch is hit the pulse is canceled
         and the driver gets disabled. Typically used on the main coil for dual coil flippers with eos switch.
         """
-        self.log.info("set_pulse_on_hit_and_enable_and_release_and_disable_rule(%s %s %s %s)" %
-                       (enable_switch.hw_switch.number, disable_switch.hw_switch.number, coil.config['label'], coil.hw_driver.number))
+        self.log.info("set_pulse_on_hit_and_enable_and_release_and_disable_rule(coil=%s sw=%s dis_sw=%s)" %
+                       (coil.hw_driver.number, enable_switch.hw_switch.number, disable_switch.hw_switch.number))
         self.communicator.rule_add(4, coil.hw_driver.number, enable_switch.hw_switch.number, disable_sw_id=disable_switch.hw_switch.number)
 
 
@@ -436,8 +436,10 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         Args:
             msg: Bytes of the message (part) received.
         """
-        self.received_msg += msg.decode()
-        #self.log.debug(self.received_msg)
+        try:
+          self.received_msg += msg.decode()
+        except:
+          self.log.warning("invalid parse frame '%s'" % msg)
 
         while True:
             pos = self.received_msg.find('\r')
