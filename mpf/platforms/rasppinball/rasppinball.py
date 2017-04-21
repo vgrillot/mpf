@@ -157,6 +157,13 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         return hw_states
 
 
+    def _get_pulse_ms_value(self, coil):
+        if coil.config['pulse_ms']:
+            return coil.config['pulse_ms']
+        else:
+            # use mpf default_pulse_ms
+            return self.machine.config['mpf']['default_pulse_ms']
+
     def configure_switch(self, config: dict):
         """Configure a switch.
 
@@ -228,7 +235,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         self.log.info("set_pulse_on_hit_rule(coil=%s sw=%s)" %
                        (coil.hw_driver.number, enable_switch.hw_switch.number))
-        self.communicator.rule_add(1, coil.hw_driver.number, enable_switch.hw_switch.number)
+        self.communicator.rule_add(1, coil.hw_driver.number, enable_switch.hw_switch.number, 
+                                   duration=self._get_pulse_ms_value(coil))
 
     def set_pulse_on_hit_and_release_rule(self, enable_switch, coil):
         """Set pulse on hit and release rule to driver.
@@ -238,7 +246,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         self.log.info("set_pulse_on_hit_and_release_rule(coil=%s sw=%s)" %
                        (coil.hw_driver.number, enable_switch.hw_switch.number))
-        self.communicator.rule_add(2, coil.hw_driver.number, enable_switch.hw_switch.number)
+        self.communicator.rule_add(2, coil.hw_driver.number, enable_switch.hw_switch.number,
+                                   duration=self._get_pulse_ms_value(coil))
 
     def set_pulse_on_hit_and_enable_and_release_rule(self, enable_switch, coil):
         """Set pulse on hit and enable and relase rule on driver.
@@ -248,7 +257,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         self.log.info("set_pulse_on_hit_and_enable_and_release_rule(coil=%s sw=%s)" %
                        (coil.hw_driver.number, enable_switch.hw_switch.number))
-        self.communicator.rule_add(3, coil.hw_driver.number, enable_switch.hw_switch.number)
+        self.communicator.rule_add(3, coil.hw_driver.number, enable_switch.hw_switch.number,
+                                   duration=self._get_pulse_ms_value(coil))
 
     def set_pulse_on_hit_and_enable_and_release_and_disable_rule(self, enable_switch, disable_switch, coil):
         """Set pulse on hit and enable and release and disable rule on driver.
@@ -259,7 +269,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         self.log.info("set_pulse_on_hit_and_enable_and_release_and_disable_rule(coil=%s sw=%s dis_sw=%s)" %
                        (coil.hw_driver.number, enable_switch.hw_switch.number, disable_switch.hw_switch.number))
-        self.communicator.rule_add(4, coil.hw_driver.number, enable_switch.hw_switch.number, disable_sw_id=disable_switch.hw_switch.number)
+        self.communicator.rule_add(4, coil.hw_driver.number, enable_switch.hw_switch.number, disable_sw_id=disable_switch.hw_switch.number,
+                                   duration=self._get_pulse_ms_value(coil))
 
 
     def _connect_to_hardware(self):
@@ -280,7 +291,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
                 baud=self.config['baud'])
         self.communicator = RaspSerialCommunicator(
             platform=self, port='/dev/ttyAMA0',
-            baud=9600)
+            baud=115200)
 
     def process_received_message(self, msg: str):
         """Send an incoming message from the FAST controller to the proper method for servicing.
@@ -289,8 +300,9 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             msg: messaged which was received
         """
         all = msg.split(":")
-        if len(all) != 2:
+        if len(all) < 2:
           self.log.warning("Recv bad formated cmd", msg)
+          return
         cmd, all_param = all[:2]
         params = all_param.split(";")
 
@@ -302,6 +314,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
         elif cmd == "DBG":      # debug message
             self.log.debug("RECV:%s" % msg)
+        elif cmd == "INF":      # debug message
+            self.log.info("RECV:%s" % msg)
         elif cmd == "WRN":  # warning message
             self.log.warning("RECV:%s" % msg)
         elif cmd == "ERR":  # warning message
@@ -309,7 +323,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         elif cmd == "TCK": # arduino is alive !
             self.log.debug("TCK ok:%d" % int(params[0]))
         else:
-            self.log.warning("RECV:UNKNOWN FRAME:", msg)
+            self.log.warning("RECV:UNKNOWN FRAME: [%s]" % msg)
 
 
 
@@ -457,26 +471,31 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         pass #nothing to identify...
         #raise NotImplementedError("Implement!")
 
+    def __send_msg(self, s):
+      s = "!%s:" % s
+      self.log.info('SEND:%s' % s)
+      self.send(s.encode())
+   
     def rule_clear(self, coil_pin, enable_sw_id):
-        msg = "RUL:CLR:%s:%s\n" % (coil_pin, enable_sw_id)
-        self.send(msg.encode())
+        msg = "RC:%s:%s" % (coil_pin, enable_sw_id)
+        self.__send_msg(msg)
 
     def rule_add(self, hwrule_type, coil_pin, enable_sw_id='0', disable_sw_id='0', duration=10):
-        msg = "RUL:ADD:%d:%s:%s:%s:%d\n" % (hwrule_type, coil_pin, enable_sw_id, disable_sw_id, duration)
-        self.send(msg.encode())
+        msg = "RA:%d:%s:%s:%s:%d" % (hwrule_type, coil_pin, enable_sw_id, disable_sw_id, duration)
+        self.__send_msg(msg)
 
     def driver_pulse(self, coil_pin, duration):
         #!!170418:VG:Add duration
-        msg = "DRV:PUL:%s:%d\n" % (coil_pin, duration)
-        self.send(msg.encode())
+        msg = "DP:%s:%d" % (coil_pin, duration)
+        self.__send_msg(msg)
 
     def driver_enable(self, coil_pin):
-        msg = "DRV:ENB:%s\n" % (coil_pin)
-        self.send(msg.encode())
+        msg = "DE:%s" % (coil_pin)
+        self.__send_msg(msg)
 
     def driver_disable(self, coil_pin):
-        msg = "DRV:DIS:%s\n" % (coil_pin)
-        self.send(msg.encode())
+        msg = "DD:%s" % (coil_pin)
+        self.__send_msg(msg)
 
 
 
