@@ -2,6 +2,7 @@
 
 import logging
 import asyncio
+import time
 
 from mpf.platforms.rasppinball.keypad import Keypad
 
@@ -142,6 +143,9 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #if self.strip.updated:
         #    self.strip.updated = False
         self.strip.show()
+
+        #  resent frame not acked by Arduino
+        self.communicator.resent_frames()
 
 
     def get_hw_switch_states(self):
@@ -306,30 +310,36 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         cmd, all_param = all[:2]
         params = all_param.split(";")
 
+        self.strip.setPixelColorRGB(0, 0, 0, 0)
         if cmd == "":
             pass
         elif cmd == "SWU":      # switch update
             sw_id = params[0]
             sw_state = int(params[1])
             self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
+            self.strip.setPixelColorRGB(0, 0, 0, 0xff)  # blue
         elif cmd == "DBG":      # debug message
             self.log.debug("RECV:%s" % msg)
         elif cmd == "INF":      # debug message
             self.log.info("RECV:%s" % msg)
         elif cmd == "WRN":  # warning message
             self.log.warning("RECV:%s" % msg)
+            self.strip.setPixelColorRGB(0, 0xff, 0xff, 0)  # yellow
         elif cmd == "ERR":  # warning message
             self.log.error("RECV:%s" % msg)
+            self.strip.setPixelColorRGB(0, 0xff, 0, 0)  # red
         elif cmd == "TCK": # arduino is alive !
             self.log.debug("TCK ok:%d" % int(params[0]))
         elif cmd == "ACK": # ack of frame
-            self.communicator.ack_frame(int(param[0]), param[1] == 1)
+            self.communicator.ack_frame(int(params[0]), params[1] == "OK")
+            self.strip.setPixelColorRGB(0, 0, 0xff, 0)  # green
         else:
             self.log.warning("RECV:UNKNOWN FRAME: [%s]" % msg)
         l = len(self.communicator.frames)
-        self.machine['frame_cnt'] = l
-        self.machine.events.post('raspberry_frame_count', {'frame_cnt': l})
-
+        #TODO: self.machine['frame_cnt'] = l
+        self.strip.show()
+        self.machine.events.post_async('raspberry_frame_count', frame_cnt=l, frames=self.communicator.frames)
+   
 
 class RASPDriver(DriverPlatformInterface):
 
@@ -343,13 +353,13 @@ class RASPDriver(DriverPlatformInterface):
     def disable(self, coil):
         """Disable the driver."""
         self.log.info("RASPDriver.Disable(%s %s)" % (coil.config['label'], coil.hw_driver.number))
-        self.platform.communicator.driver_disable(self, coil.hw_driver.number)
+        self.platform.communicator.driver_disable(coil.hw_driver.number)
         pass
 
     def enable(self, coil):
         """Enable this driver, which means it's held "on" indefinitely until it's explicitly disabled."""
         self.log.info("RASPDriver.Enable(%s %s)" % (coil.config['label'], coil.hw_driver.number))
-        self.platform.communicator.driver_enable(self, coil.hw_driver.number)
+        self.platform.communicator.driver_enable(coil.hw_driver.number)
         pass
 
     def get_board_name(self):
@@ -468,20 +478,32 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         pass #nothing to identify...
         #raise NotImplementedError("Implement!")
 
-    def __send_msg(self, s):
-      self.frame_nb += 1
-      s = "!%s:%d" % (s, self.frame_nb)
-      self.frames[self.frame_nb] = s
-      self.log.info('SEND:%s' % s)
-      self.send(s.encode())
+    def __send_frame(self, frame_nb, msg):
+        """send a frame, store id and date it"""
+        self.frames[self.frame_nb] = {'msg': msg, 'time': time.time()}
+        s = "!%d:%s" % (self.frame_nb, msg)
+        self.log.info('SEND:%s' % s)
+        self.send(s.encode())
+
+    def __send_msg(self, msg):
+        """send a new frame"""
+        self.frame_nb += 1
+        self.__send_frame(self.frame_nb, msg)
 
     def ack_frame(self, frame_nb, result):
+        """an ack has been received, delete the accodring frame in buffer"""
         if frame_nb in self.frames:
-            if result:
-                self.frames.pop(frame_nb)
-            else:
+            if not result:
                 self.log.error("ACK frame error '%s'" % self.frames[frame_nb])
+            self.frames.pop(frame_nb)
 
+    def resent_frames(self):
+        """resent all frame not acked after a timeout of 250ms"""
+        for k,f in self.frames.items():
+            if time.time() - f['time'] > 0.250:
+                self.log.warning("resend frame %d:%s" % (k, f['msg']))
+                self.__send_frame(k, f['msg'])  
+            
     def rule_clear(self, coil_pin, enable_sw_id):
         msg = "RC:%s:%s" % (coil_pin, enable_sw_id)
         self.__send_msg(msg)
