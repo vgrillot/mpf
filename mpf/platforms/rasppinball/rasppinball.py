@@ -499,10 +499,13 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
 
     def resent_frames(self):
         """resent all frame not acked after a timeout of 250ms"""
-        for k,f in self.frames.items():
-            if time.time() - f['time'] > 0.250:
-                self.log.warning("resend frame %d:%s" % (k, f['msg']))
-                self.__send_frame(k, f['msg'])  
+        try:
+            for k,f in self.frames.items():
+                if time.time() - f['time'] > 0.250:
+                    self.log.warning("resend frame %d:%s" % (k, f['msg']))
+                    self.__send_frame(k, f['msg'])
+        except RuntimeError:
+            pass  # dictionary changed size during iteration
             
     def rule_clear(self, coil_pin, enable_sw_id):
         msg = "RC:%s:%s" % (coil_pin, enable_sw_id)
