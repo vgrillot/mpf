@@ -322,10 +322,13 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             self.log.error("RECV:%s" % msg)
         elif cmd == "TCK": # arduino is alive !
             self.log.debug("TCK ok:%d" % int(params[0]))
+        elif cmd == "ACK": # ack of frame
+            self.communicator.ack_frame(int(param[0]), param[1] == 1)
         else:
             self.log.warning("RECV:UNKNOWN FRAME: [%s]" % msg)
-
-
+        l = len(self.communicator.frames)
+        self.machine['frame_cnt'] = l
+        self.machine.events.post('raspberry_frame_count', {'frame_cnt': l})
 
 
 class RASPDriver(DriverPlatformInterface):
@@ -391,7 +394,6 @@ class RASPSwitch(SwitchPlatformInterface):
         #                 "open_nondebounced": []}
 
 
-
 class RASPLed(RGBLEDPlatformInterface):
 
     def __init__(self, config, number, strip):
@@ -426,19 +428,14 @@ class RASPLed(RGBLEDPlatformInterface):
             self.log.error("led update error" + str(e))
 
 
-
 class RaspSerialCommunicator(BaseSerialCommunicator):
     """Protocol implementation to the Arduino"""
 
     def __init__(self, platform, port, baud):
-        """Initialise communicator.
-
-        Args:
-            platform(mpf.platforms.fast.fast.HardwarePlatform): the fast hardware platform
-            port: serial port
-            baud: baud rate
-        """
+        """Initialise communicator. """
+        self.frame_nb = 0
         self.received_msg = ''
+        self.frames = {}
         super().__init__(platform, port, baud)
 
 
@@ -451,9 +448,9 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
             msg: Bytes of the message (part) received.
         """
         try:
-          self.received_msg += msg.decode()
+            self.received_msg += msg.decode()
         except:
-          self.log.warning("invalid parse frame '%s'" % msg)
+            self.log.warning("invalid parse frame '%s'" % msg)
 
         while True:
             pos = self.received_msg.find('\r')
@@ -472,10 +469,19 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         #raise NotImplementedError("Implement!")
 
     def __send_msg(self, s):
-      s = "!%s:" % s
+      self.frame_nb += 1
+      s = "!%s:%d" % (s, self.frame_nb)
+      self.frames[self.frame_nb] = s
       self.log.info('SEND:%s' % s)
       self.send(s.encode())
-   
+
+    def ack_frame(self, frame_nb, result):
+        if frame_nb in self.frames:
+            if result:
+                self.frames.pop(frame_nb)
+            else:
+                self.log.error("ACK frame error '%s'" % self.frames[frame_nb])
+
     def rule_clear(self, coil_pin, enable_sw_id):
         msg = "RC:%s:%s" % (coil_pin, enable_sw_id)
         self.__send_msg(msg)
@@ -496,6 +502,8 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
     def driver_disable(self, coil_pin):
         msg = "DD:%s" % (coil_pin)
         self.__send_msg(msg)
+
+
 
 
 
