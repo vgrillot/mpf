@@ -480,7 +480,15 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
 
     def __send_frame(self, frame_nb, msg):
         """send a frame, store id and date it"""
-        self.frames[self.frame_nb] = {'msg': msg, 'time': time.time()}
+        if frame_nb in self.frames:
+            retry  = self.frames[frame_nb]['retry'] + 1
+        else:
+            retry = 0
+        if retry > 5:
+            self.log.error('SEND:too many retry (%d) for frame "%s"' % (retry, msg))
+            self.Frames.pop(frame_nb)
+            return 
+        self.frames[frame_nb] = {'msg': msg, 'time': time.time(), 'retry': retry}
         s = "!%d:%s\n" % (self.frame_nb, msg)
         self.log.info('SEND:%s' % s)
         self.send(s.encode())
@@ -501,7 +509,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         """resent all frame not acked after a timeout of 250ms"""
         try:
             for k,f in self.frames.items():
-                if time.time() - f['time'] > 0.250:
+                if time.time() - f['time'] > 0.500:
                     self.log.warning("resend frame %d:%s" % (k, f['msg']))
                     self.__send_frame(k, f['msg'])
         except RuntimeError:
