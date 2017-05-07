@@ -481,7 +481,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
     def __send_frame(self, frame_nb, msg):
         """send a frame, store id and date it"""
         self.frames[self.frame_nb] = {'msg': msg, 'time': time.time()}
-        s = "!%d:%s" % (self.frame_nb, msg)
+        s = "!%d:%s\n" % (self.frame_nb, msg)
         self.log.info('SEND:%s' % s)
         self.send(s.encode())
 
