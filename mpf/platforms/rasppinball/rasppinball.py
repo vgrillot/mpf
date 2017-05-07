@@ -486,7 +486,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
             retry = 0
         if retry > 5:
             self.log.error('SEND:too many retry (%d) for frame "%s"' % (retry, msg))
-            self.Frames.pop(frame_nb)
+            self.frames.pop(frame_nb)
             return 
         self.frames[frame_nb] = {'msg': msg, 'time': time.time(), 'retry': retry}
         s = "!%d:%s\n" % (self.frame_nb, msg)
