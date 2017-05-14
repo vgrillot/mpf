@@ -500,10 +500,12 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
 
     def ack_frame(self, frame_nb, result):
         """an ack has been received, delete the accodring frame in buffer"""
+        #!!170514:VG:Remove the frame only if ACK OK
         if frame_nb in self.frames:
             if not result:
                 self.log.error("ACK frame error '%s'" % self.frames[frame_nb])
-            self.frames.pop(frame_nb)
+            else:
+                self.frames.pop(frame_nb)
 
     def resent_frames(self):
         """resent all frame not acked after a timeout of 250ms"""
