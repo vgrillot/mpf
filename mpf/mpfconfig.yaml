@@ -96,6 +96,7 @@ mpf:
         snux: mpf.platforms.snux.HardwarePlatform
         virtual: mpf.platforms.virtual.HardwarePlatform
         spike: mpf.platforms.spike.spike.SpikePlatform
+        rasppinball: mpf.platforms.rasppinball.rasppinball.HardwarePlatform
 
     paths:
         scriptlets: scriptlets

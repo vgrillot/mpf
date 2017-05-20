@@ -804,6 +804,24 @@ pololu_maestro:
     servo_max: single|int|9000
     console_log: single|enum(none,basic,full)|none
     file_log: single|enum(none,basic,full)|basic
+rasppinball:
+    __valid_in__: machine
+    debug: single|bool|False
+    rasp_strip_leds: list|machine(rasp_strip_leds)|None
+    count: single|int|150
+    pin: single|int|18
+    freq: single|int|800000
+    dma: single|int|1
+    brightness: single|int|255
+    invert: single|bool|false
+rasp_strip_leds:
+    __valid_in__: machine
+    count: single|int|1500
+    pin: single|int|77
+    freq: single|int|666000
+    dma: single|int|1
+    brightness: single|int|255
+    invert: single|bool|false
 random_event_player:
     __valid_in__: machine, mode, show
     events: ignore
