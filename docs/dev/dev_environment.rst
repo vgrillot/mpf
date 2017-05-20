@@ -96,6 +96,7 @@ Note : you could also install mpf and mpf-mc in your global environment using
 ``sudo pip3 install -e mpf`` and ``sudo pip3 install -e mpf-mc``, or in your user
 environment using ``pip3 install --user -e mpf`` and ``pip3 install --user -e mpf-mc``.
 
+Note : you might need to install Cython to compile mpf-mc using ``pip install cython==0.24.1``
 
 4. Make your changes
 --------------------
