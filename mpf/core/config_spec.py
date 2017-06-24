@@ -79,6 +79,8 @@ assets:
     videos:
         width: single|num|None
         height: single|num|None
+        events_when_played: list|str|None
+        events_when_stopped: list|str|None
 auditor:
     __valid_in__: machine
     save_events: list|str|ball_ended
@@ -1091,9 +1093,11 @@ spike:
     baud: single|int|
     nodes: list|int|
     poll_hz: single|int|1000
+    use_send_key: single|bool|False
     connection: single|enum(shell)|shell
     console_log: single|enum(none,basic,full)|none
     file_log: single|enum(none,basic,full)|basic
+    wait_times: dict|int:int|None
 switch_player:
     __valid_in__: machine
     start_event: single|str|machine_reset_phase_3
@@ -1145,7 +1149,7 @@ timers:
     end_value: single|template_int|None
     direction: single|str|up
     max_value: single|int|None
-    tick_interval: single|ms|1s
+    tick_interval: single|template_secs|1s
     start_running: single|bool|False
     control_events: list|subconfig(timer_control_events)|None
     restart_on_complete: single|bool|False
