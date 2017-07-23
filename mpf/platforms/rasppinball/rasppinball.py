@@ -74,8 +74,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.init_strips()
 
     def stop(self):
-        # TODO: send a stop to arduino
-        pass
+        #!!170723:add msg halt platform
+        self.communicator.msg_halt_platform()
 
     def init_strips(self):
         """read strips config and init objects"""
@@ -300,6 +300,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.communicator = RaspSerialCommunicator(
             platform=self, port='/dev/ttyAMA0',
             baud=115200)
+        self.communicator.msg_init_platform()
 
     def process_received_message(self, msg: str):
         """Send an incoming message from the FAST controller to the proper method for servicing.
@@ -542,6 +543,17 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         msg = "DD:%s" % (coil_pin)
         self.__send_msg(msg)
 
+    def msg_init_platform(self):
+        """message init platform, call when the platform try to init the communication
+           with the slave board
+        """
+        msg = 'MI'
+        self.__send_msg(msg)
+
+    def msg_halt_platform(self):
+        """message halt platform, call when the platform is goingn to quit"""
+        msg = 'MH'
+        self.__send_msg(msg)
 
 
 
