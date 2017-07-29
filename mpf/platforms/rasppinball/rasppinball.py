@@ -47,6 +47,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.leds = dict()
         #self.serial_connections = dict()
         self.communicator = None
+        self.init_done = False
 
     def __repr__(self):
         """Return string representation."""
@@ -72,6 +73,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.key = ""
         #  leds
         self.init_strips()
+        self.init_done = True
 
     def stop(self):
         #!!170723:add msg halt platform
@@ -308,6 +310,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         Args:
             msg: messaged which was received
         """
+
+        if not self.init_done:
+            return  # init incomplete, don't try to process anything...
+
         all = msg.split(":")
         if len(all) < 2:
           self.log.warning("Recv bad formated cmd", msg)
@@ -464,18 +470,22 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         """
         try:
             self.received_msg += msg.decode()
-        except:
-            self.log.warning("invalid parse frame '%s'" % msg)
+        except Exception as e:
+            self.log.warning("invalid concatframe, error='%s', msg='%s'" % (repr(e), msg))
 
         while True:
-            pos = self.received_msg.find('\r')
-            if pos == -1: # no full msg
-                break
-            m = self.received_msg[:pos].strip()
-            if not len(m):
-                break
-            self.platform.process_received_message(m)
-            self.received_msg = self.received_msg[pos + 1:]
+            try:
+                pos = self.received_msg.find('\r')
+                if pos == -1: # no full msg
+                    break
+                m = self.received_msg[:pos].strip()
+                if not len(m):
+                    break
+                self.received_msg = self.received_msg[pos + 1:]
+                self.platform.process_received_message(m)
+            except Exception as e:
+                self.log.error("invalid parse frame, error='%s', msg='%s'" % (repr(e), self.received_msg))
+
 
     @asyncio.coroutine
     def _identify_connection(self):
