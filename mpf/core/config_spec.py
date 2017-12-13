@@ -284,6 +284,8 @@ combo_switches:
     events_when_both: list|str|None
     events_when_inactive: list|str|None
     events_when_one: list|str|None
+    events_when_switches_1: list|str|None
+    events_when_switches_2: list|str|None
 config:
     __valid_in__: machine, mode                           # todo add to validator
 config_player_common:
@@ -713,6 +715,7 @@ opp:
     chains: dict|str:str|None
     console_log: single|enum(none,basic,full)|none
     file_log: single|enum(none,basic,full)|basic
+    poll_hz: single|int|100
 open_pixel_control:
     __valid_in__: machine
     connection_required: single|bool|False
@@ -806,6 +809,7 @@ pololu_maestro:
     servo_max: single|int|9000
     console_log: single|enum(none,basic,full)|none
     file_log: single|enum(none,basic,full)|basic
+    debug: single|bool|False
 rasppinball:
     __valid_in__: machine
     debug: single|bool|False
@@ -1091,6 +1095,7 @@ spike:
     debug: single|bool|False
     port: single|str|
     baud: single|int|
+    flow_control: single|bool|False
     nodes: list|int|
     poll_hz: single|int|1000
     use_send_key: single|bool|False
