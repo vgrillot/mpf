@@ -16,8 +16,8 @@ from mpf.platforms.interfaces.driver_platform_interface import DriverPlatformInt
 from mpf.platforms.interfaces.rgb_led_platform_interface import RGBLEDPlatformInterface
 from mpf.platforms.base_serial_communicator import BaseSerialCommunicator
 
-from neopixel import * # ok sur raspberry
-#from neopixel import neopixel #don't find it on raspberry
+#from neopixel import * # ok sur raspberry
+from neopixel import neopixel #don't find it on raspberry
 
 
 #class HardwarePlatform(MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform):
@@ -28,12 +28,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         machine: The main ``MachineController`` instance.
 
     """
-
-    okey = None
-    osw = None
-    fake_keys = [" ", "H", "AH", "H", " ", "M", " ", "I", "J", "I", " ", "J", "I", " ", "J", "K", " ",  "N", " ", "M", "H", "H"]
-    fake_idx = 0
-    fake_cnt = 0
 
     def __init__(self, machine):
         """Initialise raspPinball platform."""
@@ -96,34 +90,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #self.strips[strip_name] = self.strip
         self.strip.updated = False
 
-    def fake_keypad(self):
-        c = self.fake_keys[self.fake_idx]
-
-        if c == ' ':
-            max = 800
-        else:
-            max = 10
-
-        self.fake_cnt += 1
-        if self.fake_cnt > max:
-            self.fake_cnt = 0
-            self.fake_idx += 1
-
-        try:
-            c = self.fake_keys[self.fake_idx]
-        except:
-            c = " "
-            self.fake_idx = 0
-
-        return c
-
     def update_kb(self):
         s = self._kp.getKeys()
-        #self.key = ""
-        #s = self.fake_keypad()
-        #if len(s) > 0:
-        #    self.log.info(s)
-        #    print("KB:", s)
         if s != self.old_key:
             #print("Keys:%s" % s)
 
@@ -139,7 +107,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
                     self.machine.switch_controller.process_switch_by_num(sw.number, state=1, platform=self, logical=False)
 
             self.old_key = s
-
 
     def tick(self, dt):
         """check with tick..."""
