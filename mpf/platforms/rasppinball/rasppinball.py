@@ -80,7 +80,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #    strip_config['invert'], strip_config['brightness'])
 
         #self.strip = Adafruit_NeoPixel(64, 18, 800000, 5, False, 255)
-        self.strip = Adafruit_NeoPixel(64, 10, 800000, 5, False, 255)
+        self.strip = neopixel.Adafruit_NeoPixel(64, 10, 800000, 5, False, 255)
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
         #self.strips[strip_name] = self.strip
@@ -280,28 +280,37 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.strip.setPixelColorRGB(0, 0, 0, 0)
         if cmd == "":
             pass
+
         elif cmd == "SWU":      # switch update
             sw_id = params[0]
             sw_state = int(params[1])
             self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
             self.strip.setPixelColorRGB(0, 0, 0, 0xff)  # blue
+
         elif cmd == "DBG":      # debug message
             self.log.debug("RECV:%s" % msg)
-        elif cmd == "INF":      # debug message
+
+        elif cmd == "INF":      # information message
             self.log.info("RECV:%s" % msg)
+
         elif cmd == "WRN":  # warning message
             self.log.warning("RECV:%s" % msg)
             self.strip.setPixelColorRGB(0, 0xff, 0xff, 0)  # yellow
-        elif cmd == "ERR":  # warning message
+
+        elif cmd == "ERR":  # error message
             self.log.error("RECV:%s" % msg)
             self.strip.setPixelColorRGB(0, 0xff, 0, 0)  # red
-        elif cmd == "TCK": # arduino is alive !
+
+        elif cmd == "TCK":  # arduino is alive !
             self.log.debug("TCK ok:%d" % int(params[0]))
-        elif cmd == "ACK": # ack of frame
+
+        elif cmd == "ACK":  # ack of frame
             self.communicator.ack_frame(int(params[0]), params[1] == "OK")
             self.strip.setPixelColorRGB(0, 0, 0xff, 0)  # green
+
         else:
             self.log.warning("RECV:UNKNOWN FRAME: [%s]" % msg)
+
         l = len(self.communicator.frames)
         #TODO: self.machine['frame_cnt'] = l
         self.strip.show()
