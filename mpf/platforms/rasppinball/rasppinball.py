@@ -1,7 +1,7 @@
 """raspPinball hardware plateform"""
 import sys
 
-sys.path.insert(0,'/home/sysop/pinball/led2/python/build/lib.linux-armv7l-3.4')
+sys.path.insert(0, '/home/sysop/pinball/led2/python/build/lib.linux-armv7l-3.4')
 
 import logging
 import asyncio
@@ -11,16 +11,15 @@ from mpf.platforms.rasppinball.keypad import Keypad
 
 from mpf.devices.driver import ConfiguredHwDriver
 from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform
-from mpf.platforms.interfaces.switch_platform_interface import SwitchPlatformInterface
-from mpf.platforms.interfaces.driver_platform_interface import DriverPlatformInterface
-from mpf.platforms.interfaces.rgb_led_platform_interface import RGBLEDPlatformInterface
-from mpf.platforms.base_serial_communicator import BaseSerialCommunicator
 
 #from neopixel import * # ok sur raspberry
 from neopixel import neopixel #don't find it on raspberry
 
+from mpf.platforms.rasppinball.driver import RASPDriver
+from mpf.platforms.rasppinball.switch import RASPSwitch
+from mpf.platforms.rasppinball.led import RASPLed
 
-#class HardwarePlatform(MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform):
+
 class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
     """Platform class for the raspPinball hardware.
 
@@ -53,13 +52,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         self.config = self.machine.config['rasppinball']
         self.machine.config_validator.validate_config("rasppinball", self.config)
-        print("***************************")
-        print(self.config)
         #self.machine_type = (
         #    self.machine.config['hardware']['driverboards'].lower())
 
         self._connect_to_hardware()
-
 
         #  keypad
         self._kp = Keypad()
@@ -120,7 +116,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #  resent frame not acked by Arduino
         self.communicator.resent_frames()
 
-
     def get_hw_switch_states(self):
         """Get initial hardware switch states."""
         hw_states = dict()
@@ -132,7 +127,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             else:
                 hw_states[number] = 0
         return hw_states
-
 
     def _get_pulse_ms_value(self, coil):
         if coil.config['pulse_ms']:
@@ -149,13 +143,11 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """
         #print(config)
         number = config['number']
-        self.log.debug("configure_switch(%s)" % (number))
+        self.log.debug("configure_switch(%s)" % number)
         switch = RASPSwitch(config, number)
         self.switches[number] = switch
         return switch
 
-
-    #def configure_driver(self, config):
     def configure_driver(self, config: dict):
         """Configure a driver.
 
@@ -168,7 +160,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         driver = RASPDriver(config, number, self)
         self.drivers[number] = driver
         return driver
-
 
     def configure_led(self, config, channels):
         """Subclass this method in a platform module to configure an LED.
@@ -188,7 +179,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         led = RASPLed(config, number, strip)
         self.leds[number] = led
         return led
-
 
     def clear_hw_rule(self, switch, coil):
         """Clear a hardware rule.
@@ -249,7 +239,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.communicator.rule_add(4, coil.hw_driver.number, enable_switch.hw_switch.number, disable_sw_id=disable_switch.hw_switch.number,
                                    duration=self._get_pulse_ms_value(coil))
 
-
     def _connect_to_hardware(self):
         """Connect to each port from the config.
 
@@ -283,8 +272,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         all = msg.split(":")
         if len(all) < 2:
-          self.log.warning("Recv bad formated cmd", msg)
-          return
+            self.log.warning("Recv bad formated cmd", msg)
+            return
         cmd, all_param = all[:2]
         params = all_param.split(";")
 
@@ -319,218 +308,12 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.machine.events.post_async('raspberry_frame_count', frame_cnt=l, frames=self.communicator.frames)
    
 
-class RASPDriver(DriverPlatformInterface):
-
-    def __init__(self, config, number, platform):
-        """Initialise driver."""
-        super().__init__(config, number)
-        self.platform = platform
-        self.log = logging.getLogger('RASPDriver')
-        self.log.info("Driver Settings for %s", self.number)
-
-    def disable(self, coil):
-        """Disable the driver."""
-        self.log.info("RASPDriver.Disable(%s %s)" % (coil.config['label'], coil.hw_driver.number))
-        self.platform.communicator.driver_disable(coil.hw_driver.number)
-        pass
-
-    def enable(self, coil):
-        """Enable this driver, which means it's held "on" indefinitely until it's explicitly disabled."""
-        self.log.info("RASPDriver.Enable(%s %s)" % (coil.config['label'], coil.hw_driver.number))
-        self.platform.communicator.driver_enable(coil.hw_driver.number)
-        pass
-
-    def get_board_name(self):
-        """Return the name of the board of this driver."""
-        pass
-
-    def pulse(self, coil, milliseconds):
-        """Pulse a driver.
-
-        Pulse this driver for a pre-determined amount of time, after which
-        this driver is turned off automatically. Note that on most platforms,
-        pulse times are a max of 255ms. (Beyond that MPF will send separate
-        enable() and disable() commands.
-
-        Args:
-            milliseconds: The number of ms to pulse this driver for. You should
-                raise a ValueError if the value is out of range for your
-                platform.
-
-        Returns:
-            A integer of the actual time this driver is going to be pulsed for.
-            MPF uses this for timing in certain situations to make sure too
-            many drivers aren't activated at once.
-
-        """
-        self.log.info("RASPDriver.Pulse(%s %s, %d ms)" %
-                       (coil.config['label'], coil.hw_driver.number, milliseconds))
-        self.platform.communicator.driver_pulse(coil.hw_driver.number, milliseconds)
-        return milliseconds
-
-
-class RASPSwitch(SwitchPlatformInterface):
-
-    def __init__(self, config, number):
-        """Initialise switch."""
-        super().__init__(config, number)
-        self.log = logging.getLogger('RASPSwitch')
-        #self.notify_on_nondebounce = notify_on_nondebounce
-        #self.hw_rules = {"closed_debounced": [],
-        #                 "closed_nondebounced": [],
-        #                 "open_debounced": [],
-        #                 "open_nondebounced": []}
-
-
-class RASPLed(RGBLEDPlatformInterface):
-
-    def __init__(self, config, number, strip):
-        """Initialise led."""
-        self.number = number
-        self.current_color = '000000'
-        self.log = logging.getLogger('RASPLed')
-        self.strip = strip
-
-    def color(self, color):
-        """Set the LED to the specified color.
-
-        Args:
-            color: a list of int colors. one for each channel.
-
-        Returns:
-            None
-        """
-        #self._color = color
-        new_color = "{0}{1}{2}".format(hex(int(color[0]))[2:].zfill(2),
-                                       hex(int(color[1]))[2:].zfill(2),
-                                       hex(int(color[2]))[2:].zfill(2))
-        #self.log.info("RASPLes.color(%s : %s -> %s)" % (self.number, color, new_color))
-        #print("color(%s -> %s)" % (self.number, new_color))
-        try:
-            self.current_color = new_color
-            #self.strip.setPixelColor(int(self.number), self.current_color)
-            self.strip.setPixelColorRGB(int(self.number), color[0], color[1], color[2])
-
-            self.strip.updated = True
-        except Exception as e:
-            self.log.error("led update error" + str(e))
-
-
-class RaspSerialCommunicator(BaseSerialCommunicator):
-    """Protocol implementation to the Arduino"""
-
-    def __init__(self, platform, port, baud):
-        """Initialise communicator. """
-        self.frame_nb = 0
-        self.received_msg = ''
-        self.frames = {}
-        super().__init__(platform, port, baud)
 
 
 
-    def _parse_msg(self, msg):
-        """Parse a message.
-
-        Msg may be partial.
-        Args:
-            msg: Bytes of the message (part) received.
-        """
-        try:
-            self.received_msg += msg.decode()
-        except Exception as e:
-            self.log.warning("invalid concatframe, error='%s', msg='%s'" % (repr(e), msg))
-
-        while True:
-            try:
-                pos = self.received_msg.find('\r')
-                if pos == -1: # no full msg
-                    break
-                m = self.received_msg[:pos].strip()
-                if not len(m):
-                    break
-                self.received_msg = self.received_msg[pos + 1:]
-                self.platform.process_received_message(m)
-            except Exception as e:
-                self.log.error("invalid parse frame, error='%s', msg='%s'" % (repr(e), self.received_msg))
 
 
-    @asyncio.coroutine
-    def _identify_connection(self):
-        """Initialise and identify connection."""
-        pass #nothing to identify...
-        #raise NotImplementedError("Implement!")
 
-    def __send_frame(self, frame_nb, msg):
-        """send a frame, store id and date it"""
-        if frame_nb in self.frames:
-            retry  = self.frames[frame_nb]['retry'] + 1
-        else:
-            retry = 0
-        if retry > 5:
-            self.log.error('SEND:too many retry (%d) for frame "%s"' % (retry, msg))
-            self.frames.pop(frame_nb)
-            return 
-        self.frames[frame_nb] = {'msg': msg, 'time': time.time(), 'retry': retry}
-        s = "!%d:%s\n" % (self.frame_nb, msg)
-        self.log.info('SEND:%s' % s)
-        self.send(s.encode())
-
-    def __send_msg(self, msg):
-        """send a new frame"""
-        self.frame_nb += 1
-        self.__send_frame(self.frame_nb, msg)
-
-    def ack_frame(self, frame_nb, result):
-        """an ack has been received, delete the accodring frame in buffer"""
-        #!!170514:VG:Remove the frame only if ACK OK
-        if frame_nb in self.frames:
-            if not result:
-                self.log.error("ACK frame error '%s'" % self.frames[frame_nb])
-            else:
-                self.frames.pop(frame_nb)
-
-    def resent_frames(self):
-        """resent all frame not acked after a timeout of 250ms"""
-        try:
-            for k,f in self.frames.items():
-                if time.time() - f['time'] > 0.500:
-                    self.log.warning("resend frame %d:%s" % (k, f['msg']))
-                    self.__send_frame(k, f['msg'])
-        except RuntimeError:
-            pass  # dictionary changed size during iteration
-            
-    def rule_clear(self, coil_pin, enable_sw_id):
-        msg = "RC:%s:%s" % (coil_pin, enable_sw_id)
-        self.__send_msg(msg)
-
-    def rule_add(self, hwrule_type, coil_pin, enable_sw_id='0', disable_sw_id='0', duration=10):
-        msg = "RA:%d:%s:%s:%s:%d" % (hwrule_type, coil_pin, enable_sw_id, disable_sw_id, duration)
-        self.__send_msg(msg)
-
-    def driver_pulse(self, coil_pin, duration):
-        #!!170418:VG:Add duration
-        msg = "DP:%s:%d" % (coil_pin, duration)
-        self.__send_msg(msg)
-
-    def driver_enable(self, coil_pin):
-        msg = "DE:%s" % (coil_pin)
-        self.__send_msg(msg)
-
-    def driver_disable(self, coil_pin):
-        msg = "DD:%s" % (coil_pin)
-        self.__send_msg(msg)
-
-    def msg_init_platform(self):
-        """message init platform, call when the platform try to init the communication
-           with the slave board
-        """
-        msg = 'MI'
-        self.__send_msg(msg)
-
-    def msg_halt_platform(self):
-        """message halt platform, call when the platform is goingn to quit"""
-        msg = 'MH'
-        self.__send_msg(msg)
 
 
 

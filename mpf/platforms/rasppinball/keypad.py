@@ -18,7 +18,8 @@
 
 import RPi.GPIO as GPIO
 
-class Keypad():
+
+class Keypad(object):
     # CONSTANTS   
     KEYPAD = [
     ['A', 'B', 'C', 'D'],
@@ -27,12 +28,11 @@ class Keypad():
     ['M', 'N', 'O', 'P']
     ]
     
-    ROW         = [21, 20, 26, 19]
-    COLUMN      = [16, 13, 6, 12]
+    ROW = [21, 20, 26, 19]
+    COLUMN = [16, 13, 6, 12]
     
     def __init__(self):
         GPIO.setmode(GPIO.BCM)
-    
 
     def getKey(self):
         
@@ -83,8 +83,6 @@ class Keypad():
         self.exit()
         return self.KEYPAD[rowVal][colVal]
 
-
-
     def getKeys(self):
         result = []
 
@@ -111,17 +109,17 @@ class Keypad():
         self.exit()
         return result
 
-
     def exit(self):
         # Reinitialize all rows and columns as input at exit
         for i in range(len(self.ROW)):
                 GPIO.setup(self.ROW[i], GPIO.IN, pull_up_down=GPIO.PUD_UP) 
         for j in range(len(self.COLUMN)):
                 GPIO.setup(self.COLUMN[j], GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        
+
+
 if __name__ == '__main__':
     # Initialize the keypad class
-    kp = keypad()
+    kp = Keypad()
     
     while True:
         # Loop while waiting for a keypress
