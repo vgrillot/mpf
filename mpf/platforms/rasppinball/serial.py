@@ -45,7 +45,8 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
                 self.received_msg = self.received_msg[pos + 1:]
                 self.platform.process_received_message(m)
             except Exception as e:
-                self.log.error("invalid parse frame, error='%s', msg='%s'" % (repr(e), self.received_msg))
+                self.log.error("invalid parse frame, error='%s', msg='%s'" % (repr(e), m))
+                raise  #!!!:to see the full strack trace
 
     @asyncio.coroutine
     def _identify_connection(self):
