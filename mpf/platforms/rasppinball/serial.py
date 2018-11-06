@@ -1,5 +1,5 @@
 """
-RaspPinball Les management
+RaspPinball communication management
 """
 
 # !!181104:VG:Creation (refactoring, splitter main unit)

@@ -1,7 +1,7 @@
-"""raspPinball hardware plateform"""
+"""raspPinball hardware platform"""
+
 import sys
 
-sys.path.insert(0, '/home/sysop/pinball/led2/python/build/lib.linux-armv7l-3.4')
 
 import logging
 import asyncio
@@ -12,13 +12,17 @@ from mpf.platforms.rasppinball.keypad import Keypad
 from mpf.devices.driver import ConfiguredHwDriver
 from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform
 
-#from neopixel import * # ok sur raspberry
-from neopixel import neopixel #don't find it on raspberry
+try:
+    from neopixel import neopixel #don't find it on raspberry
+except ImportError:
+    sys.path.insert(0, '/home/sysop/pinball/led2/python/build/lib.linux-armv7l-3.4')
+    from neopixel import * # ok sur raspberry
+
 
 from mpf.platforms.rasppinball.driver import RASPDriver
 from mpf.platforms.rasppinball.switch import RASPSwitch
 from mpf.platforms.rasppinball.led import RASPLed
-
+from mpf.platforms.rasppinball.serial import RaspSerialCommunicator
 
 class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
     """Platform class for the raspPinball hardware.
@@ -80,7 +84,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #    strip_config['invert'], strip_config['brightness'])
 
         #self.strip = Adafruit_NeoPixel(64, 18, 800000, 5, False, 255)
-        self.strip = neopixel.Adafruit_NeoPixel(64, 10, 800000, 5, False, 255)
+        self.strip = Adafruit_NeoPixel(64, 10, 800000, 5, False, 255)
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
         #self.strips[strip_name] = self.strip
@@ -284,6 +288,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         elif cmd == "SWU":      # switch update
             sw_id = params[0]
             sw_state = int(params[1])
+            assert self.switches
             self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
             self.strip.setPixelColorRGB(0, 0, 0, 0xff)  # blue
 
