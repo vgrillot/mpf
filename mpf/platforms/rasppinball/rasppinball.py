@@ -34,7 +34,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
     def __init__(self, machine):
         """Initialise raspPinball platform."""
-        super(HardwarePlatform, self).__init__(machine)
+        # super(HardwarePlatform, self).__init__(machine)
+        super().__init__(machine)
         self.log = logging.getLogger('RASPPINBALL')
         self.log.info("Configuring raspPinball hardware.")
         self._poll_task = None
@@ -145,7 +146,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         Args:
             config: Config dict.
         """
-        #print(config)
         number = config['number']
         self.log.debug("configure_switch(%s)" % number)
         switch = RASPSwitch(config, number)
@@ -288,9 +288,11 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         elif cmd == "SWU":      # switch update
             sw_id = params[0]
             sw_state = int(params[1])
-            assert self.switches
-            self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
-            self.strip.setPixelColorRGB(0, 0, 0, 0xff)  # blue
+            if not self.switches:
+                self.log.error("SWU:switches not configured")
+            else:
+                self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
+                self.strip.setPixelColorRGB(0, 0, 0, 0xff)  # blue
 
         elif cmd == "DBG":      # debug message
             self.log.debug("RECV:%s" % msg)
