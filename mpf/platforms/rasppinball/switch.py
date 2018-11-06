@@ -15,6 +15,8 @@ class RASPSwitch(SwitchPlatformInterface):
         """Initialise switch."""
         super().__init__(config, number)
         self.log = logging.getLogger('RASPSwitch')
+        self.log.info("Switch settings for %s", self.number)
+
         #self.notify_on_nondebounce = notify_on_nondebounce
         #self.hw_rules = {"closed_debounced": [],
         #                 "closed_nondebounced": [],
