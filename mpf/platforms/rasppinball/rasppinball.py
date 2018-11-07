@@ -111,12 +111,11 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
     def tick(self, dt):
         """check with tick..."""
-        del dt
-        self.update_kb()
+        #self.update_kb()
 
-        #if self.strip.updated:
-        #    self.strip.updated = False
-        self.strip.show()
+        if self.strip.updated:
+            self.strip.updated = False
+            self.strip.show()
 
         #  resent frame not acked by Arduino
         self.communicator.resent_frames()
@@ -265,7 +264,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         self.communicator.msg_init_platform()
 
     def process_received_message(self, msg: str):
-        """Send an incoming message from the FAST controller to the proper method for servicing.
+        """dispatch an incoming message
 
         Args:
             msg: messaged which was received
@@ -286,13 +285,17 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             pass
 
         elif cmd == "SWU":      # switch update
-            sw_id = params[0]
-            sw_state = int(params[1])
+            try:
+                sw_id = params[0]
+                sw_state = int(params[1])
+            except IndexError:
+                self.log.error("SWU:incomplete frame")
+                return
             if not self.switches:
                 self.log.error("SWU:switches not configured")
-            else:
-                self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
-                self.strip.setPixelColorRGB(0, 0, 0, 0xff)  # blue
+                return
+            self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
+            self.strip.setPixelColorRGB(0, 0, 0, 0xff)  # blue
 
         elif cmd == "DBG":      # debug message
             self.log.debug("RECV:%s" % msg)
@@ -321,7 +324,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         l = len(self.communicator.frames)
         #TODO: self.machine['frame_cnt'] = l
         self.strip.show()
-        self.machine.events.post_async('raspberry_frame_count', frame_cnt=l, frames=self.communicator.frames)
+        if l:
+            self.machine.events.post_async('raspberry_frame_count', frame_cnt=l, frames=self.communicator.frames)
    
 
 

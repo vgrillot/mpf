@@ -51,6 +51,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
     @asyncio.coroutine
     def _identify_connection(self):
         """Initialise and identify connection."""
+        #yield
         pass  # nothing to identify...
         # raise NotImplementedError("Implement!")
 
