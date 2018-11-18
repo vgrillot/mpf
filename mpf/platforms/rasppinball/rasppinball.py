@@ -288,8 +288,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             try:
                 sw_id = params[0]
                 sw_state = int(params[1])
+            except ValueError:
+                self.log.error("SWU:bad frame format (%s)" % msg)
             except IndexError:
-                self.log.error("SWU:incomplete frame")
+                self.log.error("SWU:incomplete frame (%s)" % msg)
                 return
             if not self.switches:
                 self.log.error("SWU:switches not configured")

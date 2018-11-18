@@ -31,6 +31,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         """
         try:
             self.received_msg += msg.decode()
+            self.log.info('PARSING:%s' % str(msg))
         except Exception as e:
             self.log.warning("invalid concatframe, error='%s', msg='%s'" % (repr(e), msg))
 
@@ -78,10 +79,12 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
     def ack_frame(self, frame_nb, result):
         """an ack has been received, delete the according frame in buffer"""
         # !!170514:VG:Remove the frame only if ACK OK
+        # !!181118:VG:Add log when frame acked
         if frame_nb in self.frames:
             if not result:
                 self.log.error("ACK frame error '%s'" % self.frames[frame_nb])
             else:
+                self.log.info("ACK frame done '%s'" % self.frames[frame_nb])
                 self.frames.pop(frame_nb)
 
     def resent_frames(self):
