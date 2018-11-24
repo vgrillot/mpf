@@ -1,6 +1,7 @@
 """raspPinball hardware platform"""
 
 import sys
+sys.path.insert(0, '/home/sysop/pinball/led2/python/build/lib.linux-armv7l-3.4')
 
 
 import logging
@@ -12,13 +13,14 @@ from mpf.platforms.rasppinball.keypad import Keypad
 from mpf.devices.driver import ConfiguredHwDriver
 from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform
 
-try:
-    from neopixel import neopixel  # don't find it on raspberry
-except ImportError:
-    sys.path.insert(0, '/home/sysop/pinball/led2/python/build/lib.linux-armv7l-3.4')
-    from neopixel import * # ok sur raspberry
+#try:
+#    from mpf.platforms.raspinball.neopixel import *  # don't find it on raspberry
+#except ImportError:
+#from neopixel import * # ok sur raspberry
 
+#from mpf.platforms.rasppinball.neopixel import *  # don't find it on raspberry
 
+from neopixel import * # ok sur raspberry
 from mpf.platforms.rasppinball.driver import RASPDriver
 from mpf.platforms.rasppinball.switch import RASPSwitch
 from mpf.platforms.rasppinball.led import RASPLed
@@ -84,8 +86,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #    strip_config['count'], strip_config['pin'], strip_config['freq'], strip_config['dma'],
         #    strip_config['invert'], strip_config['brightness'])
 
-        #self.strip = Adafruit_NeoPixel(64, 18, 800000, 5, False, 255)
-        self.strip = neopixel.Adafruit_NeoPixel(64, 10, 800000, 5, False, 255)
+        self.strip = Adafruit_NeoPixel(64, 10, 800000, 5, False, 255)
+        #self.strip = neopixel.Adafruit_NeoPixel(64, 10, 800000, 5, False, 255)
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
         #self.strips[strip_name] = self.strip
