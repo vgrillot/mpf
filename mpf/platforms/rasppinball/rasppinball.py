@@ -13,7 +13,7 @@ from mpf.devices.driver import ConfiguredHwDriver
 from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform
 
 try:
-    from neopixel import neopixel #don't find it on raspberry
+    from neopixel import neopixel  # don't find it on raspberry
 except ImportError:
     sys.path.insert(0, '/home/sysop/pinball/led2/python/build/lib.linux-armv7l-3.4')
     from neopixel import * # ok sur raspberry
@@ -23,6 +23,7 @@ from mpf.platforms.rasppinball.driver import RASPDriver
 from mpf.platforms.rasppinball.switch import RASPSwitch
 from mpf.platforms.rasppinball.led import RASPLed
 from mpf.platforms.rasppinball.serial import RaspSerialCommunicator
+
 
 class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
     """Platform class for the raspPinball hardware.
@@ -38,7 +39,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         super().__init__(machine)
         self.log = logging.getLogger('RASPPINBALL')
         self.log.info("Configuring raspPinball hardware.")
-        self._poll_task = None
         self.strips = dict()
         self.switches = dict()
         self.drivers = dict()
@@ -85,7 +85,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         #    strip_config['invert'], strip_config['brightness'])
 
         #self.strip = Adafruit_NeoPixel(64, 18, 800000, 5, False, 255)
-        self.strip = Adafruit_NeoPixel(64, 10, 800000, 5, False, 255)
+        self.strip = neopixel.Adafruit_NeoPixel(64, 10, 800000, 5, False, 255)
         # Intialize the library (must be called once before other functions).
         self.strip.begin()
         #self.strips[strip_name] = self.strip
@@ -111,12 +111,16 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
     def tick(self, dt):
         """check with tick..."""
+        #!!181124:VG:Poll message from communicator
+
         #self.update_kb()
 
         if self.strip.updated:
             self.strip.updated = False
             self.strip.show()
 
+        #  check if there is pending message to process
+        self.communicator.peek_msg()
         #  resent frame not acked by Arduino
         self.communicator.resent_frames()
 
@@ -270,6 +274,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             msg: messaged which was received
         """
 
+        self.log.debug("process_received_message(%s)" % msg)
         if not self.init_done:
             return  # init incomplete, don't try to process anything...
 

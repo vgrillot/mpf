@@ -30,25 +30,30 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
             msg: Bytes of the message (part) received.
         """
         # !!181118:VG:Add some log info...
+        # !!181124:VG:Just append the buffer and peek the first msg
         try:
             self.received_msg += msg.decode()
             self.log.info('PARSING:%s' % str(msg))
         except Exception as e:
             self.log.warning("invalid concatframe, error='%s', msg='%s'" % (repr(e), msg))
+        self.peek_msg()
 
+    def peek_msg(self):
+        """peek and process the first message from the bufer"""
         # !!181119:VG:Remove the while, manage only the first message
-        try:
-            pos = self.received_msg.find('\r')
-            if pos == -1:  # no full msg
-                break
-            m = self.received_msg[:pos].strip()
-            if not len(m):
-                break
-            self.received_msg = self.received_msg[pos + 1:]
-            self.platform.process_received_message(m)
-        except Exception as e:
-            self.log.error("invalid parse frame, error='%s', msg='%s'" % (repr(e), m))
-            raise  #!!!:to see the full strack trace
+        if self.received_msg:
+            try:
+                pos = self.received_msg.find('\r')
+                if pos == -1:  # no full msg
+                    return
+                m = self.received_msg[:pos].strip()
+                if not len(m):
+                    return
+                self.received_msg = self.received_msg[pos + 1:]
+                self.platform.process_received_message(m)
+            except Exception as e:
+                self.log.error("invalid parse frame, error='%s', msg='%s'" % (repr(e), m))
+                raise  #!!!:to see the full strack trace
 
     @asyncio.coroutine
     def _identify_connection(self):
