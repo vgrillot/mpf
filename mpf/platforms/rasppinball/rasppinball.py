@@ -328,7 +328,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         elif cmd == "ACK":  # ack of frame
             self.communicator.ack_frame(int(params[0]), params[1] == "OK")
-            self.log.debug("ACK frame:%d  ok:%s" % (int(params[0]), int(params[1]))
+            self.log.debug("ACK frame:%d  ok:%s" % (int(params[0]), params[1]))
             self.strip.setPixelColorRGB(0, 0xff, 0, 0)     # green
 
         else:
