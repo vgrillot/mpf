@@ -304,29 +304,32 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
                 self.log.error("SWU:switches not configured")
                 return
             self.machine.switch_controller.process_switch_by_num(sw_id, state=sw_state, platform=self, logical=False)
-            self.strip.setPixelColorRGB(0, 0, 0, 0xff)  # blue
+            self.strip.setPixelColorRGB(0, 0, 0, 0xff)     # blue
 
         elif cmd == "DBG":      # debug message
             self.log.debug("RECV:%s" % msg)
+            self.strip.setPixelColorRGB(0, 0xff, 0xff, 0)  # yellow
 
         elif cmd == "INF":      # information message
             self.log.info("RECV:%s" % msg)
+            self.strip.setPixelColorRGB(0, 0, 0xff, 0xff)  # magenta
 
         elif cmd == "WRN":  # warning message
             self.log.warning("RECV:%s" % msg)
-            self.strip.setPixelColorRGB(0, 0xff, 0xff, 0)  # yellow
+            self.strip.setPixelColorRGB(0, 0xc0, 0xff, 0)  # red light
 
         elif cmd == "ERR":  # error message
             self.log.error("RECV:%s" % msg)
-            self.strip.setPixelColorRGB(0, 0xff, 0, 0)  # red
+            self.strip.setPixelColorRGB(0, 0, 0xff, 0)     # red
 
         elif cmd == "TCK":  # arduino is alive !
             self.log.debug("TCK ok:%d" % int(params[0]))
+            self.strip.setPixelColorRGB(0, 0xff, 0xff, 0xff)  # white
 
         elif cmd == "ACK":  # ack of frame
             self.communicator.ack_frame(int(params[0]), params[1] == "OK")
             self.log.debug("ACK frame:%d  ok:%s" % (int(params[0]), int(params[1]))
-            self.strip.setPixelColorRGB(0, 0, 0xff, 0)  # green
+            self.strip.setPixelColorRGB(0, 0xff, 0, 0)     # green
 
         else:
             self.log.warning("RECV:UNKNOWN FRAME: [%s]" % msg)
