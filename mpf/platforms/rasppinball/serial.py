@@ -63,24 +63,24 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         # raise NotImplementedError("Implement!")
 
     def __send_frame(self, frame_nb, msg):
-        """send a frame, store id and date it"""
-        if frame_nb in self.frames:
-            retry = self.frames[frame_nb]['retry'] + 1
-        else:
-            retry = 0
+        """send or resend and date it"""
+        if frame_nb not in self.frames:
+            self.log.error('SEND:Frame %d "%s" not found in pool' % (frame_nb, msg.strip()))
+        retry = self.frames[frame_nb]['retry'] + 1
         if retry > 10:
             self.log.error('SEND:too many retry (%d) for frame "%s"' % (retry, msg))
             self.frames.pop(frame_nb)
             return
         self.frames[frame_nb] = {'msg': msg, 'time': time.time(), 'retry': retry}
         s = "!%d:%s\n" % (self.frame_nb, msg)
-        self.log.info('SEND:%s' % s)
+        self.log.info('SEND:%s' % s.strip())
         self.send(s.encode())
 
     def __send_msg(self, msg):
-        """send a new frame"""
+        """add a new msg to frame pool"""
         self.frame_nb += 1
-        self.__send_frame(self.frame_nb, msg)
+        self.frames[self.frame_nb] = {'msg': msg, 'time': time.time(), 'retry': 0}
+        #self.__send_frame(self.frame_nb, msg)
 
     def ack_frame(self, frame_nb, result):
         """an ack has been received, delete the according frame in buffer"""
@@ -88,19 +88,20 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         # !!181118:VG:Add log when frame acked
         if frame_nb in self.frames:
             if not result:
-                self.log.error("ACK frame error '%s'" % self.frames[frame_nb])
+                self.log.error("ACK frame error %d : '%s'" % (frame_nd, self.frames[frame_nb]))
             else:
-                self.log.info("ACK frame done '%s'" % self.frames[frame_nb])
+                self.log.info("ACK frame done %d : '%s'" % (frame_nb, self.frames[frame_nb]))
                 self.frames.pop(frame_nb)
 
     def resent_frames(self):
         """resent all frame not acked after a timeout of 100 ms
            resent only once at a time...
         """
+
         try:
             for k, f in self.frames.items():
-                if time.time() - f['time'] > 0.100:
-                    self.log.warning("resend frame %d:%s" % (k, f['msg']))
+                if (f['retry'] == 0) or  (time.time() - f['time'] > 0.100):
+                    #self.log.warning("resend frame %d:%s" % (k, f['msg']))
                     self.__send_frame(k, f['msg'])
                     return
         except RuntimeError:
