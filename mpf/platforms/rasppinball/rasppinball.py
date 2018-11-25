@@ -117,6 +117,11 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         #self.update_kb()
 
+        #!!181125:VG:fade debug led
+        dbg = self.strip.getPixelColor(0)
+        dbg &= 0x3F3F3F
+        self.strip.setPixelColor(0, dbg)
+
         if self.strip.updated:
             self.strip.updated = False
             self.strip.show()
@@ -287,7 +292,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         cmd, all_param = all[:2]
         params = all_param.split(";")
 
-        self.strip.setPixelColorRGB(0, 0, 0, 0)
+        #self.strip.setPixelColorRGB(0, 0, 0, 0)
         if cmd == "":
             pass
 
@@ -308,7 +313,6 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         elif cmd == "DBG":      # debug message
             self.log.debug("RECV:%s" % msg)
-            self.strip.setPixelColorRGB(0, 0xff, 0xff, 0)  # yellow
 
         elif cmd == "INF":      # information message
             self.log.info("RECV:%s" % msg)
@@ -316,7 +320,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         elif cmd == "WRN":  # warning message
             self.log.warning("RECV:%s" % msg)
-            self.strip.setPixelColorRGB(0, 0xc0, 0xff, 0)  # red light
+            #self.strip.setPixelColorRGB(0, 0xc0, 0xff, 0)  # red light
+            self.strip.setPixelColorRGB(0, 0xff, 0xff, 0)  # yellow
 
         elif cmd == "ERR":  # error message
             self.log.error("RECV:%s" % msg)
@@ -324,7 +329,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
 
         elif cmd == "TCK":  # arduino is alive !
             self.log.debug("TCK ok:%d" % int(params[0]))
-            self.strip.setPixelColorRGB(0, 0xff, 0xff, 0xff)  # white
+            #self.strip.setPixelColorRGB(0, 0xff, 0xff, 0xff)  # white
 
         elif cmd == "ACK":  # ack of frame
             self.communicator.ack_frame(int(params[0]), params[1] == "OK")
@@ -334,9 +339,10 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         else:
             self.log.warning("RECV:UNKNOWN FRAME: [%s]" % msg)
 
+        self.strip.show()
+
         l = len(self.communicator.frames)
         #TODO: self.machine['frame_cnt'] = l
-        self.strip.show()
         if l:
             self.machine.events.post_async('raspberry_frame_count', frame_cnt=l, frames=self.communicator.frames)
    
