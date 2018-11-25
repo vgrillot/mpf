@@ -68,7 +68,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
             retry = self.frames[frame_nb]['retry'] + 1
         else:
             retry = 0
-        if retry > 5:
+        if retry > 10:
             self.log.error('SEND:too many retry (%d) for frame "%s"' % (retry, msg))
             self.frames.pop(frame_nb)
             return
@@ -94,12 +94,15 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
                 self.frames.pop(frame_nb)
 
     def resent_frames(self):
-        """resent all frame not acked after a timeout of 250ms"""
+        """resent all frame not acked after a timeout of 100 ms
+           resent only once at a time...
+        """
         try:
             for k, f in self.frames.items():
-                if time.time() - f['time'] > 0.500:
+                if time.time() - f['time'] > 0.100:
                     self.log.warning("resend frame %d:%s" % (k, f['msg']))
                     self.__send_frame(k, f['msg'])
+                    return
         except RuntimeError:
             pass  # dictionary changed size during iteration
 
