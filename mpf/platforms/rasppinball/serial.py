@@ -35,7 +35,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
             self.received_msg += msg.decode()
             self.log.info('PARSING:%s' % str(msg))
         except Exception as e:
-            self.log.warning("invalid concatframe, error='%s', msg='%s'" % (repr(e), msg))
+            self.log.warning("invalid concat frame, error='%s', msg='%s'" % (repr(e), msg))
         self.peek_msg()
 
     def peek_msg(self):
@@ -51,6 +51,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
                     return
                 self.received_msg = self.received_msg[pos + 1:]
                 self.platform.process_received_message(m)
+                return True
             except Exception as e:
                 self.log.error("invalid parse frame, error='%s', msg='%s'" % (repr(e), m))
                 raise  #!!!:to see the full strack trace
@@ -88,7 +89,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
         # !!181118:VG:Add log when frame acked
         if frame_nb in self.frames:
             if not result:
-                self.log.error("ACK frame error %d : '%s'" % (frame_nd, self.frames[frame_nb]))
+                self.log.error("ACK frame error %d : '%s'" % (frame_nb, self.frames[frame_nb]))
             else:
                 self.log.info("ACK frame done %d : '%s'" % (frame_nb, self.frames[frame_nb]))
                 self.frames.pop(frame_nb)
@@ -100,7 +101,7 @@ class RaspSerialCommunicator(BaseSerialCommunicator):
 
         try:
             for k, f in self.frames.items():
-                if (f['retry'] == 0) or  (time.time() - f['time'] > 0.100):
+                if (f['retry'] == 0) or (time.time() - f['time'] > 1.000):
                     #self.log.warning("resend frame %d:%s" % (k, f['msg']))
                     self.__send_frame(k, f['msg'])
                     return

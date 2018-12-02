@@ -3,24 +3,16 @@
 import sys
 sys.path.insert(0, '/home/sysop/pinball/led2/python/build/lib.linux-armv7l-3.4')
 
-
 import logging
-import asyncio
-import time
 
 from mpf.platforms.rasppinball.keypad import Keypad
 
-from mpf.devices.driver import ConfiguredHwDriver
-from mpf.core.platform import MatrixLightsPlatform, LedPlatform, SwitchPlatform, DriverPlatform
+# from mpf.devices.driver import ConfiguredHwDriver
+from mpf.core.platform import LedPlatform, SwitchPlatform, DriverPlatform
 
-#try:
-#    from mpf.platforms.raspinball.neopixel import *  # don't find it on raspberry
-#except ImportError:
-#from neopixel import * # ok sur raspberry
+from mpf.platforms.rasppinball.neopixel import *  # don't find it on raspberry
+# from neopixel import * # ok sur raspberry
 
-#from mpf.platforms.rasppinball.neopixel import *  # don't find it on raspberry
-
-from neopixel import * # ok sur raspberry
 from mpf.platforms.rasppinball.driver import RASPDriver
 from mpf.platforms.rasppinball.switch import RASPSwitch
 from mpf.platforms.rasppinball.led import RASPLed
@@ -39,6 +31,7 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
         """Initialise raspPinball platform."""
         # super(HardwarePlatform, self).__init__(machine)
         super().__init__(machine)
+        self.debug = True
         self.log = logging.getLogger('RASPPINBALL')
         self.log.info("Configuring raspPinball hardware.")
         self.strips = dict()
@@ -127,7 +120,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             self.strip.show()
 
         #  check if there is pending message to process
-        self.communicator.peek_msg()
+        while self.communicator.peek_msg():
+            pass # unpack all message
         #  resent frame not acked by Arduino
         self.communicator.resent_frames()
 
@@ -270,7 +264,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
                 platform=self, port=port,
                 baud=self.config['baud'])
         self.communicator = RaspSerialCommunicator(
-            platform=self, port='/dev/ttyAMA0',
+            platform=self, port='COM6',
+            # platform=self, port='/dev/ttyAMA0',
             baud=115200)
         self.communicator.msg_init_platform()
 
@@ -332,8 +327,8 @@ class HardwarePlatform(SwitchPlatform, DriverPlatform, LedPlatform):
             #self.strip.setPixelColorRGB(0, 0xff, 0xff, 0xff)  # white
 
         elif cmd == "ACK":  # ack of frame
-            self.communicator.ack_frame(int(params[0]), params[1] == "OK")
             self.log.debug("ACK frame:%d  ok:%s" % (int(params[0]), params[1]))
+            self.communicator.ack_frame(int(params[0]), params[1] == "OK")
             self.strip.setPixelColorRGB(0, 0xff, 0, 0)     # green
 
         else:
